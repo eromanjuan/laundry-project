@@ -21,8 +21,8 @@ const navItems = [
   { to: '/payments', label: 'Payments', icon: FaMoneyCheckAlt },
   { to: '/expenses', label: 'Expenses', icon: FaReceipt },
   { to: '/sales-summary', label: 'Sales Summary', icon: FaChartBar },
-  { to: '/reports', label: 'Reports', icon: FaChartBar },
   { to: '/machine-monitoring', label: 'Machine Monitoring', icon: FaDesktop },
+  { to: '/reports', label: 'Reports', icon: FaChartBar },
   { to: '/settings', label: 'Settings', icon: FaCogs },
 ]
 
