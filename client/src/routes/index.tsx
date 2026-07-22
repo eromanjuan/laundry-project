@@ -8,6 +8,7 @@ import { ClaimLaundryPage } from '../pages/ClaimLaundryPage'
 import { PaymentsPage } from '../pages/PaymentsPage'
 import { ExpensesPage } from '../pages/ExpensesPage'
 import { SalesSummaryPage } from '../pages/SalesSummaryPage'
+import { CashDrawerPage } from '../pages/CashDrawerPage'
 import { ReportsPage } from '../pages/ReportsPage'
 import { MachineMonitoringPage } from '../pages/MachineMonitoringPage'
 import { SettingsPage } from '../pages/SettingsPage'
@@ -78,6 +79,14 @@ export const router = createBrowserRouter([
     element: (
       <AppLayout title="Sales Summary" description="End-of-day sales and performance overview">
         <SalesSummaryPage />
+      </AppLayout>
+    ),
+  },
+  {
+    path: '/cash-drawer',
+    element: (
+      <AppLayout title="Cash Drawer & Shift" description="Reconcile drawer activity and shift operations">
+        <CashDrawerPage />
       </AppLayout>
     ),
   },
