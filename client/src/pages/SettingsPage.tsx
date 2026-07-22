@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { FaArchive, FaFileExcel, FaFileImport, FaSave, FaUpload } from 'react-icons/fa'
+import { FaArchive, FaBluetooth, FaCheckCircle, FaFileExcel, FaFileImport, FaImage, FaPrint, FaSave, FaSpinner, FaSync, FaUpload, FaUsb } from 'react-icons/fa'
 import { SummaryStat } from '../components/SummaryStat'
 
 type TabKey = 'business' | 'printer' | 'receipt' | 'system' | 'backup'
@@ -8,6 +8,13 @@ type PrinterType = 'Generic ESC/POS' | 'XPrinter' | 'Epson' | 'Rongta' | 'Other'
 type ConnectionType = 'Bluetooth' | 'LAN (Ethernet)' | 'USB'
 type PaperSize = '58mm' | '80mm'
 type Density = 'Light' | 'Normal' | 'Dark'
+type CharacterSize = 'Small' | 'Normal' | 'Large'
+
+interface PrinterDevice {
+  name: string
+  address: string
+  status: string
+}
 
 interface SettingsState {
   businessName: string
@@ -32,6 +39,10 @@ interface SettingsState {
   autoPrintDailySales: boolean
   receiptHeader: string
   receiptFooter: string
+  receiptThankYouMessage: string
+  facebookPage: string
+  hotline: string
+  customNotes: string
   qrCodeEnabled: boolean
   barcodeEnabled: boolean
   currency: string
@@ -39,6 +50,11 @@ interface SettingsState {
   dateFormat: string
   timeFormat: string
   automaticDateTime: boolean
+  characterSize: CharacterSize
+  paperFeedAfterPrint: boolean
+  drawerKick: boolean
+  autoPrintCashCollectionReport: boolean
+  autoPrintClaimStub: boolean
 }
 
 const initialState: SettingsState = {
@@ -64,6 +80,10 @@ const initialState: SettingsState = {
   autoPrintDailySales: true,
   receiptHeader: 'Laundry Project POS',
   receiptFooter: 'Please keep this receipt. God Bless!',
+  receiptThankYouMessage: 'Thank you for choosing Laundry Project!',
+  facebookPage: 'facebook.com/laundryproject',
+  hotline: '+63 917 555 0100',
+  customNotes: 'Pickup within 24 hours for best quality.',
   qrCodeEnabled: true,
   barcodeEnabled: false,
   currency: 'PHP',
@@ -71,7 +91,18 @@ const initialState: SettingsState = {
   dateFormat: 'MM/DD/YYYY',
   timeFormat: '12H',
   automaticDateTime: true,
+  characterSize: 'Normal',
+  paperFeedAfterPrint: true,
+  drawerKick: false,
+  autoPrintCashCollectionReport: true,
+  autoPrintClaimStub: false,
 }
+
+const sampleBluetoothDevices: PrinterDevice[] = [
+  { name: 'Printer001', address: 'DC:0D:30:12:AB:CD', status: 'Available' },
+  { name: 'XPrinter XP-P323B', address: 'A8:5E:45:11:90:10', status: 'Available' },
+  { name: 'Epson TM-T20', address: 'B2:18:55:21:CF:4D', status: 'Busy' },
+]
 
 const tabs: Array<{ key: TabKey; label: string }> = [
   { key: 'business', label: 'Business Settings' },
@@ -102,12 +133,63 @@ function ToggleRow({ label, checked, onChange }: { label: string; checked: boole
   )
 }
 
+function FormField({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <label className="space-y-1">
+      <span className="text-sm font-semibold text-slate-700">{label}</span>
+      {children}
+    </label>
+  )
+}
+
+function SelectField({ label, value, options, onChange }: { label: string; value: string; options: string[]; onChange: (value: string) => void }) {
+  return (
+    <FormField label={label}>
+      <select value={value} onChange={(event) => onChange(event.target.value)} className="w-full rounded-2xl border border-slate-200 px-3 py-2.5 outline-none">
+        {options.map((option) => <option key={option} value={option}>{option}</option>)}
+      </select>
+    </FormField>
+  )
+}
+
 export function SettingsPage() {
   const [activeTab, setActiveTab] = useState<TabKey>('business')
   const [settings, setSettings] = useState(initialState)
+  const [bluetoothEnabled, setBluetoothEnabled] = useState(false)
+  const [isScanning, setIsScanning] = useState(false)
+  const [bluetoothDevices, setBluetoothDevices] = useState<PrinterDevice[]>(sampleBluetoothDevices)
+  const [selectedBluetoothDevice, setSelectedBluetoothDevice] = useState<PrinterDevice | null>(sampleBluetoothDevices[1])
+  const [bluetoothConnected, setBluetoothConnected] = useState(false)
+  const [lanStatus, setLanStatus] = useState('Ready for LAN testing')
+  const [usbConnected, setUsbConnected] = useState(false)
+  const [testPrintStatus, setTestPrintStatus] = useState('Ready')
 
   const updateSetting = <K extends keyof SettingsState>(key: K, value: SettingsState[K]) => {
     setSettings((current) => ({ ...current, [key]: value }))
+  }
+
+  const handleEnableBluetooth = () => {
+    setBluetoothEnabled(true)
+    setLanStatus('Bluetooth enabled for nearby device discovery')
+  }
+
+  const handleSearchDevices = () => {
+    setIsScanning(true)
+    setBluetoothEnabled(true)
+    setTimeout(() => {
+      setBluetoothDevices(sampleBluetoothDevices)
+      setIsScanning(false)
+      setLanStatus('Scanning complete. Nearby printer devices discovered.')
+    }, 900)
+  }
+
+  const handleRefreshDevices = () => {
+    setIsScanning(true)
+    setTimeout(() => {
+      setBluetoothDevices(sampleBluetoothDevices)
+      setIsScanning(false)
+      setLanStatus('Bluetooth devices refreshed')
+    }, 700)
   }
 
   const renderContent = () => {
@@ -152,7 +234,7 @@ export function SettingsPage() {
               </div>
             </SectionCard>
 
-            <SectionCard title="Business Branding" subtitle="Upload and preview the business identity displayed on receipts and reports.">
+            <SectionCard title="Business Branding" subtitle="Upload and preview the business identity displayed on receipts and history summaries.">
               <div className="space-y-4">
                 <div className="rounded-2xl border border-dashed border-slate-300 p-6 text-center text-sm text-slate-500">
                   <FaUpload className="mx-auto mb-3 text-xl text-blue-600" />
@@ -174,64 +256,201 @@ export function SettingsPage() {
         )
       case 'printer':
         return (
-          <div className="grid gap-6 xl:grid-cols-[1.1fr_0.9fr]">
-            <SectionCard title="Printer Configuration" subtitle="Configure the thermal printer used for receipts and reports.">
+          <div className="space-y-6">
+            <SectionCard title="Printer Configuration" subtitle="Professional Android-style POS printer setup with Bluetooth, LAN, USB, and test print controls.">
               <div className="grid gap-4 md:grid-cols-2">
-                <label className="space-y-1">
-                  <span className="text-sm font-semibold text-slate-700">Printer Name</span>
+                <FormField label="Printer Name">
                   <input value={settings.printerName} onChange={(event) => updateSetting('printerName', event.target.value)} className="w-full rounded-2xl border border-slate-200 px-3 py-2.5 outline-none" />
-                </label>
-                <label className="space-y-1">
-                  <span className="text-sm font-semibold text-slate-700">Printer Type</span>
+                </FormField>
+                <FormField label="Printer Type">
                   <select value={settings.printerType} onChange={(event) => updateSetting('printerType', event.target.value as PrinterType)} className="w-full rounded-2xl border border-slate-200 px-3 py-2.5 outline-none">
                     {['Generic ESC/POS', 'XPrinter', 'Epson', 'Rongta', 'Other'].map((option) => <option key={option} value={option}>{option}</option>)}
                   </select>
-                </label>
-                <label className="space-y-1">
-                  <span className="text-sm font-semibold text-slate-700">Connection Type</span>
+                </FormField>
+                <FormField label="Connection Type">
                   <select value={settings.connectionType} onChange={(event) => updateSetting('connectionType', event.target.value as ConnectionType)} className="w-full rounded-2xl border border-slate-200 px-3 py-2.5 outline-none">
                     {['Bluetooth', 'LAN (Ethernet)', 'USB'].map((option) => <option key={option} value={option}>{option}</option>)}
                   </select>
-                </label>
-                <label className="space-y-1">
-                  <span className="text-sm font-semibold text-slate-700">Printer IP Address</span>
-                  <input value={settings.printerIp} onChange={(event) => updateSetting('printerIp', event.target.value)} className="w-full rounded-2xl border border-slate-200 px-3 py-2.5 outline-none" />
-                </label>
-                <label className="space-y-1">
-                  <span className="text-sm font-semibold text-slate-700">Port</span>
-                  <input value={settings.port} onChange={(event) => updateSetting('port', event.target.value)} className="w-full rounded-2xl border border-slate-200 px-3 py-2.5 outline-none" />
-                </label>
-                <label className="space-y-1">
-                  <span className="text-sm font-semibold text-slate-700">Paper Size</span>
-                  <select value={settings.paperSize} onChange={(event) => updateSetting('paperSize', event.target.value as PaperSize)} className="w-full rounded-2xl border border-slate-200 px-3 py-2.5 outline-none">
-                    {['58mm', '80mm'].map((option) => <option key={option} value={option}>{option}</option>)}
-                  </select>
-                </label>
-                <label className="space-y-1">
-                  <span className="text-sm font-semibold text-slate-700">Print Density</span>
-                  <select value={settings.density} onChange={(event) => updateSetting('density', event.target.value as Density)} className="w-full rounded-2xl border border-slate-200 px-3 py-2.5 outline-none">
-                    {['Light', 'Normal', 'Dark'].map((option) => <option key={option} value={option}>{option}</option>)}
-                  </select>
-                </label>
+                </FormField>
+                <SelectField label="Paper Size" value={settings.paperSize} options={['58mm', '80mm']} onChange={(value) => updateSetting('paperSize', value as PaperSize)} />
               </div>
             </SectionCard>
 
-            <SectionCard title="Printer Actions" subtitle="Test and manage printer connection status.">
-              <div className="space-y-3">
-                <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 text-sm text-slate-600">
-                  <p className="font-semibold text-slate-900">Connected Printer</p>
-                  <p className="mt-1">{settings.printerName}</p>
-                  <p className="mt-1">MAC Address: 00:1A:2B:3C:4D:5E</p>
-                  <p className="mt-1">Signal Status: Strong</p>
+            <div className="grid gap-6 xl:grid-cols-[1.15fr_0.85fr]">
+              <SectionCard title="Bluetooth Printer" subtitle="Discover nearby Bluetooth printers and connect instantly.">
+                <div className="space-y-4">
+                  <div className="flex flex-wrap gap-2">
+                    <button onClick={handleEnableBluetooth} className="flex items-center gap-2 rounded-2xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-700">
+                      <FaBluetooth /> Enable Bluetooth
+                    </button>
+                    <button onClick={handleSearchDevices} className="flex items-center gap-2 rounded-2xl bg-blue-600 px-3 py-2 text-sm font-semibold text-white">
+                      {isScanning ? <FaSpinner className="animate-spin" /> : <FaSync />} Search Devices
+                    </button>
+                    <button onClick={handleRefreshDevices} className="flex items-center gap-2 rounded-2xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-700">
+                      <FaSync /> Refresh
+                    </button>
+                  </div>
+
+                  <div className="rounded-2xl border border-slate-200 bg-slate-50 p-3 text-sm text-slate-600">
+                    <div className="mb-2 flex items-center justify-between">
+                      <span className="font-semibold text-slate-900">Nearby Devices</span>
+                      <span className="rounded-full bg-blue-50 px-2.5 py-1 text-xs font-semibold text-blue-700">{bluetoothEnabled ? 'Enabled' : 'Disabled'}</span>
+                    </div>
+                    <div className="space-y-2">
+                      {bluetoothDevices.map((device) => (
+                        <div key={device.address} className="rounded-2xl border border-slate-200 bg-white p-3">
+                          <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
+                            <div>
+                              <p className="font-semibold text-slate-900">{device.name}</p>
+                              <p className="text-xs text-slate-500">{device.address}</p>
+                              <p className="mt-1 text-xs text-slate-500">{device.status}</p>
+                            </div>
+                            <div className="flex flex-wrap gap-2">
+                              <button onClick={() => setSelectedBluetoothDevice(device)} className="rounded-xl border border-slate-200 px-2.5 py-1.5 text-xs font-semibold text-slate-700">Select Printer</button>
+                              <button onClick={() => {
+                                setSelectedBluetoothDevice(device)
+                                setBluetoothConnected(true)
+                                setTestPrintStatus('Bluetooth printer ready')
+                              }} className="rounded-xl bg-blue-600 px-2.5 py-1.5 text-xs font-semibold text-white">Connect</button>
+                              <button onClick={() => setBluetoothConnected(false)} className="rounded-xl border border-slate-200 px-2.5 py-1.5 text-xs font-semibold text-slate-700">Disconnect</button>
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div className="rounded-2xl border border-slate-200 bg-blue-50 p-4 text-sm text-slate-700">
+                    <p className="font-semibold text-slate-900">Connected Printer</p>
+                    <p className="mt-1">{bluetoothConnected && selectedBluetoothDevice ? selectedBluetoothDevice.name : settings.printerName}</p>
+                    <p className="mt-1">Bluetooth Address: {selectedBluetoothDevice?.address ?? 'A8:5E:45:11:90:10'}</p>
+                    <p className="mt-1">Signal Status: {bluetoothConnected ? 'Strong' : 'Standby'}</p>
+                  </div>
+
+                  <div className="flex flex-wrap gap-2">
+                    <button onClick={() => {
+                      updateSetting('printerName', selectedBluetoothDevice?.name ?? settings.printerName)
+                      setBluetoothConnected(Boolean(selectedBluetoothDevice))
+                    }} className="rounded-2xl bg-emerald-600 px-3 py-2 text-sm font-semibold text-white">Save Printer</button>
+                  </div>
                 </div>
-                <ToggleRow label="Auto Cut" checked={settings.autoCut} onChange={(value) => updateSetting('autoCut', value)} />
-                <ToggleRow label="Open Cash Drawer After Print" checked={settings.openCashDrawer} onChange={(value) => updateSetting('openCashDrawer', value)} />
-                <ToggleRow label="Automatically Print Receipt" checked={settings.autoPrintReceipt} onChange={(value) => updateSetting('autoPrintReceipt', value)} />
-                <ToggleRow label="Automatically Print Shift Closing Report" checked={settings.autoPrintShiftReport} onChange={(value) => updateSetting('autoPrintShiftReport', value)} />
-                <ToggleRow label="Automatically Print Daily Sales Summary" checked={settings.autoPrintDailySales} onChange={(value) => updateSetting('autoPrintDailySales', value)} />
-                <div className="flex flex-wrap gap-2">
-                  <button className="rounded-2xl bg-blue-600 px-3 py-2 text-sm font-semibold text-white">Test Print</button>
-                  <button className="rounded-2xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-700">Save Settings</button>
+              </SectionCard>
+
+              <SectionCard title="LAN Printer" subtitle="Connect to Ethernet-based printers with IP address and port.">
+                <div className="space-y-3">
+                  <FormField label="Printer IP Address">
+                    <input value={settings.printerIp} onChange={(event) => updateSetting('printerIp', event.target.value)} className="w-full rounded-2xl border border-slate-200 px-3 py-2.5 outline-none" />
+                  </FormField>
+                  <FormField label="Port">
+                    <input value={settings.port} onChange={(event) => updateSetting('port', event.target.value)} className="w-full rounded-2xl border border-slate-200 px-3 py-2.5 outline-none" />
+                  </FormField>
+                  <div className="rounded-2xl border border-slate-200 bg-slate-50 p-3 text-sm text-slate-600">
+                    <p className="font-semibold text-slate-900">Connection Status</p>
+                    <p className="mt-1">{lanStatus}</p>
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    <button onClick={() => setLanStatus('Connecting to 192.168.1.40:9100')} className="rounded-2xl bg-blue-600 px-3 py-2 text-sm font-semibold text-white">Test Connection</button>
+                    <button onClick={() => setLanStatus('Saved LAN printer settings')} className="rounded-2xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-700">Save</button>
+                  </div>
+                </div>
+              </SectionCard>
+            </div>
+
+            <div className="grid gap-6 xl:grid-cols-[1.1fr_0.9fr]">
+              <SectionCard title="USB Printer" subtitle="Detect attached USB printers for local receipt printing.">
+                <div className="space-y-4">
+                  <div className="flex items-center justify-between rounded-2xl border border-slate-200 bg-slate-50 p-3 text-sm text-slate-600">
+                    <div>
+                      <p className="font-semibold text-slate-900">USB Thermal Printer</p>
+                      <p className="mt-1">Status: {usbConnected ? 'Connected' : 'Disconnected'}</p>
+                    </div>
+                    <div className="rounded-2xl bg-blue-50 p-2 text-blue-600"><FaUsb /></div>
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    <button onClick={() => setUsbConnected(true)} className="rounded-2xl bg-blue-600 px-3 py-2 text-sm font-semibold text-white">Connect</button>
+                    <button onClick={() => setUsbConnected(false)} className="rounded-2xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-700">Disconnect</button>
+                  </div>
+                </div>
+              </SectionCard>
+
+              <SectionCard title="Test Print" subtitle="Validate the selected printer with a sample receipt output.">
+                <div className="space-y-3">
+                  <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 text-sm text-slate-700">
+                    <p className="font-semibold text-slate-900">{settings.receiptHeader}</p>
+                    <p className="mt-1">Laundry Project POS</p>
+                    <p className="mt-1">Printer Test</p>
+                    <p className="mt-1">Date: {new Date().toLocaleDateString('en-US')}</p>
+                    <p className="mt-1">Time: {new Date().toLocaleTimeString('en-US')}</p>
+                    <p className="mt-1">Connected Printer: {selectedBluetoothDevice?.name ?? settings.printerName}</p>
+                    <p className="mt-1">Paper Width: {settings.paperSize}</p>
+                    <p className="mt-1">Status: {testPrintStatus}</p>
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    <button onClick={() => setTestPrintStatus('Printed successfully')} className="flex items-center gap-2 rounded-2xl bg-blue-600 px-3 py-2 text-sm font-semibold text-white"><FaPrint /> Print Test</button>
+                    <button onClick={() => setTestPrintStatus('Ready')} className="rounded-2xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-700">Reset</button>
+                  </div>
+                </div>
+              </SectionCard>
+            </div>
+
+            <div className="grid gap-6 xl:grid-cols-[1.1fr_0.9fr]">
+              <SectionCard title="Paper & Print Options" subtitle="Choose paper size and automatic printing behaviors.">
+                <div className="grid gap-4 md:grid-cols-2">
+                  <SelectField label="Paper Size" value={settings.paperSize} options={['58mm', '80mm']} onChange={(value) => updateSetting('paperSize', value as PaperSize)} />
+                  <SelectField label="Print Density" value={settings.density} options={['Light', 'Normal', 'Dark']} onChange={(value) => updateSetting('density', value as Density)} />
+                  <SelectField label="Character Size" value={settings.characterSize} options={['Small', 'Normal', 'Large']} onChange={(value) => updateSetting('characterSize', value as CharacterSize)} />
+                  <ToggleRow label="Paper Feed After Print" checked={settings.paperFeedAfterPrint} onChange={(value) => updateSetting('paperFeedAfterPrint', value)} />
+                  <ToggleRow label="Auto Cut (if supported)" checked={settings.autoCut} onChange={(value) => updateSetting('autoCut', value)} />
+                  <ToggleRow label="Drawer Kick (if supported)" checked={settings.drawerKick} onChange={(value) => updateSetting('drawerKick', value)} />
+                </div>
+                <div className="mt-4 space-y-3">
+                  <ToggleRow label="Automatically Print Customer Receipt" checked={settings.autoPrintReceipt} onChange={(value) => updateSetting('autoPrintReceipt', value)} />
+                  <ToggleRow label="Automatically Print Shift Closing Report" checked={settings.autoPrintShiftReport} onChange={(value) => updateSetting('autoPrintShiftReport', value)} />
+                  <ToggleRow label="Automatically Print Daily Sales Summary" checked={settings.autoPrintDailySales} onChange={(value) => updateSetting('autoPrintDailySales', value)} />
+                  <ToggleRow label="Automatically Print Cash Collection Report" checked={settings.autoPrintCashCollectionReport} onChange={(value) => updateSetting('autoPrintCashCollectionReport', value)} />
+                  <ToggleRow label="Automatically Print Claim Stub" checked={settings.autoPrintClaimStub} onChange={(value) => updateSetting('autoPrintClaimStub', value)} />
+                </div>
+              </SectionCard>
+
+              <SectionCard title="Receipt Header & Footer" subtitle="Customize how the receipt is branded and displayed.">
+                <div className="space-y-4">
+                  <div className="rounded-2xl border border-dashed border-slate-300 p-4 text-center text-sm text-slate-500">
+                    <FaImage className="mx-auto mb-2 text-lg text-blue-600" />
+                    <p>Upload Business Logo</p>
+                  </div>
+                  <FormField label="Business Name">
+                    <input value={settings.businessName} onChange={(event) => updateSetting('businessName', event.target.value)} className="w-full rounded-2xl border border-slate-200 px-3 py-2.5 outline-none" />
+                  </FormField>
+                  <FormField label="Branch">
+                    <input value={settings.branchName} onChange={(event) => updateSetting('branchName', event.target.value)} className="w-full rounded-2xl border border-slate-200 px-3 py-2.5 outline-none" />
+                  </FormField>
+                  <FormField label="Address">
+                    <input value={settings.address} onChange={(event) => updateSetting('address', event.target.value)} className="w-full rounded-2xl border border-slate-200 px-3 py-2.5 outline-none" />
+                  </FormField>
+                  <FormField label="Contact Number">
+                    <input value={settings.contactNumber} onChange={(event) => updateSetting('contactNumber', event.target.value)} className="w-full rounded-2xl border border-slate-200 px-3 py-2.5 outline-none" />
+                  </FormField>
+                  <FormField label="Thanks Message">
+                    <input value={settings.receiptThankYouMessage} onChange={(event) => updateSetting('receiptThankYouMessage', event.target.value)} className="w-full rounded-2xl border border-slate-200 px-3 py-2.5 outline-none" />
+                  </FormField>
+                  <FormField label="Facebook Page">
+                    <input value={settings.facebookPage} onChange={(event) => updateSetting('facebookPage', event.target.value)} className="w-full rounded-2xl border border-slate-200 px-3 py-2.5 outline-none" />
+                  </FormField>
+                  <FormField label="Hotline">
+                    <input value={settings.hotline} onChange={(event) => updateSetting('hotline', event.target.value)} className="w-full rounded-2xl border border-slate-200 px-3 py-2.5 outline-none" />
+                  </FormField>
+                  <FormField label="Custom Notes">
+                    <input value={settings.customNotes} onChange={(event) => updateSetting('customNotes', event.target.value)} className="w-full rounded-2xl border border-slate-200 px-3 py-2.5 outline-none" />
+                  </FormField>
+                </div>
+              </SectionCard>
+            </div>
+
+            <SectionCard title="Advanced Settings & Design" subtitle="The layout is polished for modern POS administration and receipt presentation.">
+              <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 text-sm text-slate-700">
+                <div className="flex flex-wrap items-center gap-2 text-blue-600">
+                  <FaCheckCircle />
+                  <span>Bluetooth discovery, LAN validation, USB detection, print testing, and receipt branding are all available from one professional interface.</span>
                 </div>
               </div>
             </SectionCard>

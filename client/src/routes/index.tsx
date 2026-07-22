@@ -15,6 +15,7 @@ import { MachineMonitoringPage } from '../pages/MachineMonitoringPage'
 import { SettingsPage } from '../pages/SettingsPage'
 import { LoginPage } from '../pages/LoginPage'
 import { UserManagementPage } from '../pages/UserManagementPage'
+import { LGMachineStatusPage } from '../pages/LGMachineStatusPage'
 
 export const router = createBrowserRouter([
   {
@@ -126,6 +127,16 @@ export const router = createBrowserRouter([
     ),
   },
   {
+    path: '/lg-machine-status',
+    element: (
+      <ProtectedRoute>
+        <AppLayout title="LG Machine Status" description="Monitor LG Smart Laundry machine activity and synchronize store status">
+          <LGMachineStatusPage />
+        </AppLayout>
+      </ProtectedRoute>
+    ),
+  },
+  {
     path: '/machine-monitoring',
     element: (
       <ProtectedRoute>
@@ -154,5 +165,9 @@ export const router = createBrowserRouter([
         </AppLayout>
       </ProtectedRoute>
     ),
+  },
+  {
+    path: '*',
+    element: <Navigate to="/dashboard" replace />,
   },
 ])

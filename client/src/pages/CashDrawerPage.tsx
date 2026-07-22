@@ -292,7 +292,7 @@ export function CashDrawerPage() {
       </div>
 
       <div className="grid gap-6 xl:grid-cols-2">
-        <SectionCard title="Shift Actions" subtitle="Preview reports, close the shift, and print the receipt.">
+        <SectionCard title="Shift Actions" subtitle="Preview the shift history, close the shift, and print the receipt.">
           <div className="flex flex-wrap gap-2">
             <button className="flex items-center gap-2 rounded-2xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-700 shadow-sm"><FaPrint /> Preview Shift Report</button>
             <button className="flex items-center gap-2 rounded-2xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-700 shadow-sm"><FaArchive /> Close Shift</button>

@@ -12,6 +12,7 @@ import {
   FaDesktop,
   FaHistory,
   FaUserShield,
+  FaTv,
 } from 'react-icons/fa'
 import { useAuth } from '../context/AuthContext'
 
@@ -26,6 +27,7 @@ const navItems = [
   { to: '/sales-summary', label: 'Sales Summary', icon: FaChartBar },
   { to: '/cash-drawer', label: 'Cash Drawer', icon: FaMoneyCheckAlt },
   { to: '/machine-monitoring', label: 'Machine Monitoring', icon: FaDesktop },
+  { to: '/lg-machine-status', label: 'LG Machine Status', icon: FaTv },
   { to: '/history', label: 'History', icon: FaHistory },
   { to: '/settings', label: 'Settings', icon: FaCogs },
 ]
