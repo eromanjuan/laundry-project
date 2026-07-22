@@ -7,6 +7,7 @@ import { ProductionBoardPage } from '../pages/ProductionBoardPage'
 import { ClaimLaundryPage } from '../pages/ClaimLaundryPage'
 import { PaymentsPage } from '../pages/PaymentsPage'
 import { ExpensesPage } from '../pages/ExpensesPage'
+import { SalesSummaryPage } from '../pages/SalesSummaryPage'
 import { ReportsPage } from '../pages/ReportsPage'
 import { MachineMonitoringPage } from '../pages/MachineMonitoringPage'
 import { SettingsPage } from '../pages/SettingsPage'
@@ -69,6 +70,14 @@ export const router = createBrowserRouter([
     element: (
       <AppLayout title="Expenses" description="Monitor operational costs and spending categories">
         <ExpensesPage />
+      </AppLayout>
+    ),
+  },
+  {
+    path: '/sales-summary',
+    element: (
+      <AppLayout title="Sales Summary" description="End-of-day sales and performance overview">
+        <SalesSummaryPage />
       </AppLayout>
     ),
   },
