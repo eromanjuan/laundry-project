@@ -10,7 +10,10 @@ import {
   FaChartBar,
   FaCogs,
   FaDesktop,
+  FaHistory,
+  FaUserShield,
 } from 'react-icons/fa'
+import { useAuth } from '../context/AuthContext'
 
 const navItems = [
   { to: '/dashboard', label: 'Dashboard', icon: FaChartPie },
@@ -23,11 +26,12 @@ const navItems = [
   { to: '/sales-summary', label: 'Sales Summary', icon: FaChartBar },
   { to: '/cash-drawer', label: 'Cash Drawer', icon: FaMoneyCheckAlt },
   { to: '/machine-monitoring', label: 'Machine Monitoring', icon: FaDesktop },
-  { to: '/reports', label: 'Reports', icon: FaChartBar },
+  { to: '/history', label: 'History', icon: FaHistory },
   { to: '/settings', label: 'Settings', icon: FaCogs },
 ]
 
 export function Sidebar() {
+  const { user } = useAuth()
   return (
     <aside className="hidden w-72 shrink-0 flex-col border-r border-blue-100 bg-slate-950 text-slate-100 lg:flex">
       <div className="border-b border-blue-900/60 px-6 py-6">
@@ -57,6 +61,21 @@ export function Sidebar() {
             <span>{label}</span>
           </NavLink>
         ))}
+        {user?.role === 'Administrator' ? (
+          <NavLink
+            to="/user-management"
+            className={({ isActive }) =>
+              `flex items-center gap-3 rounded-2xl px-3 py-3 text-sm font-medium transition-all duration-200 ${
+                isActive
+                  ? 'bg-blue-600 text-white shadow-lg shadow-blue-900/30'
+                  : 'text-slate-300 hover:bg-blue-900/40 hover:text-white'
+              }`
+            }
+          >
+            <FaUserShield className="text-base" />
+            <span>User Management</span>
+          </NavLink>
+        ) : null}
       </nav>
 
       <div className="border-t border-blue-900/60 px-6 py-5">

@@ -1,5 +1,7 @@
 import type { ReactNode } from 'react'
 import { FaBell, FaCalendarAlt, FaSearch } from 'react-icons/fa'
+import { useNavigate } from 'react-router-dom'
+import { useAuth } from '../context/AuthContext'
 
 interface TopbarProps {
   title: string
@@ -15,6 +17,14 @@ const today = new Date().toLocaleDateString('en-US', {
 })
 
 export function Topbar({ title, description, action }: TopbarProps) {
+  const { user, logout } = useAuth()
+  const navigate = useNavigate()
+
+  const handleLogout = () => {
+    logout()
+    navigate('/login')
+  }
+
   return (
     <header className="sticky top-0 z-20 border-b border-slate-200 bg-white/90 px-4 py-4 backdrop-blur md:px-6 lg:px-8">
       <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
@@ -43,10 +53,13 @@ export function Topbar({ title, description, action }: TopbarProps) {
           <div className="flex items-center gap-2 rounded-xl border border-blue-100 bg-blue-50 px-3 py-2">
             <div className="h-8 w-8 rounded-full bg-blue-600" />
             <div>
-              <p className="text-sm font-semibold text-slate-900">Administrator</p>
-              <p className="text-xs text-slate-500">System Manager</p>
+              <p className="text-sm font-semibold text-slate-900">{user?.name ?? 'Guest'}</p>
+              <p className="text-xs text-slate-500">{user?.role ?? 'Signed out'}</p>
             </div>
           </div>
+          <button onClick={handleLogout} className="rounded-xl border border-slate-200 px-3 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-100">
+            Logout
+          </button>
           {action}
         </div>
       </div>

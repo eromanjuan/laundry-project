@@ -1,4 +1,5 @@
 import { createBrowserRouter, Navigate } from 'react-router-dom'
+import { ProtectedRoute } from '../components/ProtectedRoute'
 import { AppLayout } from '../layouts/AppLayout'
 import { DashboardPage } from '../pages/DashboardPage'
 import { CustomersPage } from '../pages/CustomersPage'
@@ -9,109 +10,149 @@ import { PaymentsPage } from '../pages/PaymentsPage'
 import { ExpensesPage } from '../pages/ExpensesPage'
 import { SalesSummaryPage } from '../pages/SalesSummaryPage'
 import { CashDrawerPage } from '../pages/CashDrawerPage'
-import { ReportsPage } from '../pages/ReportsPage'
+import { HistoryPage } from '../pages/HistoryPage'
 import { MachineMonitoringPage } from '../pages/MachineMonitoringPage'
 import { SettingsPage } from '../pages/SettingsPage'
+import { LoginPage } from '../pages/LoginPage'
+import { UserManagementPage } from '../pages/UserManagementPage'
 
 export const router = createBrowserRouter([
   {
     path: '/',
-    element: <Navigate to="/dashboard" replace />,
+    element: <Navigate to="/login" replace />,
+  },
+  {
+    path: '/login',
+    element: <LoginPage />,
   },
   {
     path: '/dashboard',
     element: (
-      <AppLayout title="Dashboard" description="Overview of daily laundry operations and status">
-        <DashboardPage />
-      </AppLayout>
+      <ProtectedRoute>
+        <AppLayout title="Dashboard" description="Overview of daily laundry operations and status">
+          <DashboardPage />
+        </AppLayout>
+      </ProtectedRoute>
     ),
   },
   {
     path: '/customers',
     element: (
-      <AppLayout title="Customers" description="Manage customer profiles and service history">
-        <CustomersPage />
-      </AppLayout>
+      <ProtectedRoute>
+        <AppLayout title="Customers" description="Manage customer profiles and service history">
+          <CustomersPage />
+        </AppLayout>
+      </ProtectedRoute>
     ),
   },
   {
     path: '/job-orders',
     element: (
-      <AppLayout title="Job Orders" description="Review active and completed laundry jobs">
-        <JobOrdersPage />
-      </AppLayout>
+      <ProtectedRoute>
+        <AppLayout title="Job Orders" description="Review active and completed laundry jobs">
+          <JobOrdersPage />
+        </AppLayout>
+      </ProtectedRoute>
     ),
   },
   {
     path: '/production-board',
     element: (
-      <AppLayout title="Production Board" description="Coordinate workflow stages and station activity">
-        <ProductionBoardPage />
-      </AppLayout>
+      <ProtectedRoute>
+        <AppLayout title="Production Board" description="Coordinate workflow stages and station activity">
+          <ProductionBoardPage />
+        </AppLayout>
+      </ProtectedRoute>
     ),
   },
   {
     path: '/claim-laundry',
     element: (
-      <AppLayout title="Claim Laundry" description="Handle ready pickups and customer handoffs">
-        <ClaimLaundryPage />
-      </AppLayout>
+      <ProtectedRoute>
+        <AppLayout title="Claim Laundry" description="Handle ready pickups and customer handoffs">
+          <ClaimLaundryPage />
+        </AppLayout>
+      </ProtectedRoute>
     ),
   },
   {
     path: '/payments',
     element: (
-      <AppLayout title="Payments" description="Track payments and outstanding balances">
-        <PaymentsPage />
-      </AppLayout>
+      <ProtectedRoute>
+        <AppLayout title="Payments" description="Track payments and outstanding balances">
+          <PaymentsPage />
+        </AppLayout>
+      </ProtectedRoute>
     ),
   },
   {
     path: '/expenses',
     element: (
-      <AppLayout title="Expenses" description="Monitor operational costs and spending categories">
-        <ExpensesPage />
-      </AppLayout>
+      <ProtectedRoute>
+        <AppLayout title="Expenses" description="Monitor operational costs and spending categories">
+          <ExpensesPage />
+        </AppLayout>
+      </ProtectedRoute>
     ),
   },
   {
     path: '/sales-summary',
     element: (
-      <AppLayout title="Sales Summary" description="End-of-day sales and performance overview">
-        <SalesSummaryPage />
-      </AppLayout>
+      <ProtectedRoute>
+        <AppLayout title="Sales Summary" description="End-of-day sales and performance overview">
+          <SalesSummaryPage />
+        </AppLayout>
+      </ProtectedRoute>
     ),
   },
   {
     path: '/cash-drawer',
     element: (
-      <AppLayout title="Cash Drawer & Shift" description="Reconcile drawer activity and shift operations">
-        <CashDrawerPage />
-      </AppLayout>
+      <ProtectedRoute>
+        <AppLayout title="Cash Drawer & Shift" description="Reconcile drawer activity and shift operations">
+          <CashDrawerPage />
+        </AppLayout>
+      </ProtectedRoute>
     ),
   },
   {
-    path: '/reports',
+    path: '/history',
     element: (
-      <AppLayout title="Reports" description="Analyze operations, finance, and service performance">
-        <ReportsPage />
-      </AppLayout>
+      <ProtectedRoute>
+        <AppLayout title="History" description="Analyze operations, finance, service performance, and audit events">
+          <HistoryPage />
+        </AppLayout>
+      </ProtectedRoute>
     ),
   },
   {
     path: '/machine-monitoring',
     element: (
-      <AppLayout title="Machine Monitoring" description="Monitor equipment utilization and availability">
-        <MachineMonitoringPage />
-      </AppLayout>
+      <ProtectedRoute>
+        <AppLayout title="Machine Monitoring" description="Monitor equipment utilization and availability">
+          <MachineMonitoringPage />
+        </AppLayout>
+      </ProtectedRoute>
+    ),
+  },
+  {
+    path: '/user-management',
+    element: (
+      <ProtectedRoute requiredRole="Administrator">
+        <AppLayout title="User Management" description="Add, edit, disable, and reset staff accounts">
+          <UserManagementPage />
+        </AppLayout>
+      </ProtectedRoute>
     ),
   },
   {
     path: '/settings',
     element: (
-      <AppLayout title="Settings" description="Configure operational defaults and preferences">
-        <SettingsPage />
-      </AppLayout>
+      <ProtectedRoute>
+        <AppLayout title="Settings" description="Configure operational defaults and preferences">
+          <SettingsPage />
+        </AppLayout>
+      </ProtectedRoute>
     ),
   },
 ])
