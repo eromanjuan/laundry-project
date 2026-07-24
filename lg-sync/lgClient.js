@@ -231,6 +231,89 @@ async function getStatus(empToken, userNo, today) {
   }))
 }
 
+/** Raw store list with each store's device-id array. */
+async function getStores(empToken, userNo) {
+  const res = await fetch(`${DATA_API}/stores`, { headers: dataHeaders(empToken, userNo) })
+  const data = await res.json().catch(() => ({}))
+  return (data.result || []).map((s) => ({
+    storeId: s.storeId,
+    storeName: s.storeName,
+    deviceIds: s.deviceId || [],
+  }))
+}
+
+const DEVICE_TYPE = { 211: 'Washer', 212: 'Dryer' }
+
+/** Full detail for one device (metadata + live snapshot), or null if unregistered. */
+async function getDeviceDetail(empToken, userNo, deviceId) {
+  const res = await fetch(`${DATA_API}/devices/${deviceId}`, { headers: dataHeaders(empToken, userNo) })
+  if (res.status !== 200) return null // stale / DeviceNotRegistered
+  const data = await res.json().catch(() => null)
+  if (!data || data.resultCode !== '0000') return null
+  return data.result
+}
+
+/** Lifetime cycle count for a device (the "cycle" number on the LG card). */
+async function getDeviceCycles(empToken, userNo, deviceId) {
+  const res = await fetch(`${DATA_API}/devices/${deviceId}/history?page=1&pageSize=1`, {
+    headers: dataHeaders(empToken, userNo),
+  })
+  if (res.status !== 200) return null
+  const data = await res.json().catch(() => null)
+  const used = data?.result?.revenue?.used
+  return typeof used === 'number' ? used : null
+}
+
+/** Turn a raw device record + cycle count into the fields the POS card shows. */
+function interpretMachine(detail, cycles) {
+  const type = DEVICE_TYPE[detail.deviceType] || 'Washer'
+  const wd = detail.snapshot?.washerDryer || {}
+  const online = detail.snapshot?.online !== false
+  let running
+  let remainingMin
+  let course
+  let hasError
+  if (String(detail.deviceType) === '212') {
+    // Dryer
+    running = Number(wd.runningTime) > 0
+    remainingMin = Number(wd.remainTime) || 0
+    course = wd.course && wd.course !== 'NOT_SELECTED' ? wd.course : ''
+    hasError = wd.error && wd.error !== 'ERROR_NO'
+  } else {
+    // Washer
+    running = wd.isRunning === 'ON'
+    remainingMin = (Number(wd.RemainHour) || 0) * 60 + (Number(wd.RemainMin) || 0)
+    course = wd.CourseNum && wd.CourseNum !== 'NOT_SELECTED' ? wd.CourseNum : ''
+    hasError = wd.ErrorCode && wd.ErrorCode !== 'ERROR_NO'
+  }
+  let status
+  if (!online) status = 'Offline'
+  else if (hasError) status = 'Error'
+  else if (running) status = 'In Use'
+  else status = 'Standby'
+  return { name: detail.alias || '', type, status, course, remainingMin, online, cycles: cycles ?? 0 }
+}
+
+/** All registered machines across all stores, with live status + cycle count. */
+async function getDevices(empToken, userNo) {
+  const stores = await getStores(empToken, userNo)
+  const machines = []
+  for (const store of stores) {
+    for (const deviceId of store.deviceIds) {
+      const detail = await getDeviceDetail(empToken, userNo, deviceId)
+      if (!detail) continue // skip stale / unregistered ids
+      const cycles = await getDeviceCycles(empToken, userNo, deviceId)
+      machines.push({
+        deviceId,
+        storeId: store.storeId,
+        storeName: store.storeName,
+        ...interpretMachine(detail, cycles),
+      })
+    }
+  }
+  return machines
+}
+
 /** Full login from scratch → tokens + userNo. */
 async function fullLogin(email, password) {
   const { loginSessionID } = await login(email, password)
@@ -247,5 +330,7 @@ module.exports = {
   refreshToken,
   getUserNo,
   getStatus,
+  getStores,
+  getDevices,
   fullLogin,
 }

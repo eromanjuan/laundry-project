@@ -76,17 +76,20 @@ async function run() {
   try {
     let token = await ensureToken(db, false)
     let stores
+    let machines
     try {
       stores = await lg.getStatus(token.accessToken, token.userNo)
+      machines = await lg.getDevices(token.accessToken, token.userNo)
     } catch (e) {
       // Token may have expired early — force a fresh login and retry once.
       token = await ensureToken(db, true)
       stores = await lg.getStatus(token.accessToken, token.userNo)
+      machines = await lg.getDevices(token.accessToken, token.userNo)
     }
-    await db.doc(STATUS).set({ stores, syncedAt: Date.now(), error: null })
-    console.log(`LG sync ok — ${stores.length} store(s):`)
-    for (const s of stores) {
-      console.log(`  ${s.storeName}: washers ${s.washer.standby}/${s.washer.total} free, dryers ${s.dryer.standby}/${s.dryer.total} free`)
+    await db.doc(STATUS).set({ stores, machines, syncedAt: Date.now(), error: null })
+    console.log(`LG sync ok — ${stores.length} store(s), ${machines.length} machine(s):`)
+    for (const m of machines) {
+      console.log(`  ${m.storeName} · ${m.name} (${m.type}): ${m.status}${m.course ? ' / ' + m.course : ''} · cycle ${m.cycles}${m.remainingMin ? ' · ' + m.remainingMin + 'min left' : ''}`)
     }
   } catch (e) {
     console.error('LG sync failed:', e.message)
