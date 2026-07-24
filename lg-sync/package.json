@@ -1,0 +1,12 @@
+{
+  "name": "laundry-lg-sync",
+  "description": "Standalone LG Laundry Crew Manager → Firestore sync (GitHub Actions)",
+  "main": "index.js",
+  "private": true,
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "firebase-admin": "^12.6.0"
+  }
+}

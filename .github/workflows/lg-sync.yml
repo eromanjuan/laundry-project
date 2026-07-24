@@ -1,0 +1,33 @@
+name: LG Machine Sync
+
+# Runs the LG login + status sync on a schedule and writes results to Firestore.
+# No Firebase Blaze plan needed — Firestore is on the free Spark plan; this job
+# authenticates with a service-account key stored in the FIREBASE_SERVICE_ACCOUNT
+# repository secret.
+
+on:
+  schedule:
+    - cron: '*/5 * * * *' # every 5 minutes (GitHub may delay runs under load)
+  workflow_dispatch: {} # lets you run it manually from the Actions tab
+
+# Avoid overlapping runs if one is slow.
+concurrency:
+  group: lg-sync
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Install dependencies
+        working-directory: lg-sync
+        run: npm install --no-audit --no-fund
+      - name: Run LG sync
+        working-directory: lg-sync
+        env:
+          FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+        run: node index.js
