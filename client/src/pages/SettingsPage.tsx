@@ -1,8 +1,17 @@
-import { useState } from 'react'
-import { FaArchive, FaBluetooth, FaCheckCircle, FaFileExcel, FaFileImport, FaImage, FaPrint, FaSave, FaSpinner, FaSync, FaUpload, FaUsb } from 'react-icons/fa'
+import { useEffect, useState } from 'react'
+import { FaArchive, FaBluetooth, FaCheckCircle, FaExclamationTriangle, FaFileExcel, FaFileImport, FaImage, FaLink, FaPlus, FaPrint, FaSave, FaSpinner, FaSync, FaTrash, FaUnlink, FaUpload, FaUsb } from 'react-icons/fa'
 import { SummaryStat } from '../components/SummaryStat'
+import { usePricing } from '../hooks/usePricing'
+import { usePermissions } from '../hooks/usePermissions'
+import { useBranding, fileToResizedDataUrl } from '../hooks/useBranding'
+import { useBusiness } from '../hooks/useBusiness'
+import { useLgConnection } from '../hooks/useLgConnection'
+import { useLgStatus, syncLgNow } from '../hooks/useLgStatus'
+import { backupDatabase, restoreDatabase } from '../lib/backup'
+import { downloadJson } from '../lib/exports'
+import type { PriceItem } from '../data/pricing'
 
-type TabKey = 'business' | 'printer' | 'receipt' | 'system' | 'backup'
+type TabKey = 'business' | 'pricing' | 'printer' | 'receipt' | 'system' | 'machineSync' | 'backup'
 
 type PrinterType = 'Generic ESC/POS' | 'XPrinter' | 'Epson' | 'Rongta' | 'Other'
 type ConnectionType = 'Bluetooth' | 'LAN (Ethernet)' | 'USB'
@@ -106,9 +115,11 @@ const sampleBluetoothDevices: PrinterDevice[] = [
 
 const tabs: Array<{ key: TabKey; label: string }> = [
   { key: 'business', label: 'Business Settings' },
+  { key: 'pricing', label: 'Pricing' },
   { key: 'printer', label: 'Printer Settings' },
   { key: 'receipt', label: 'Receipt Layout' },
   { key: 'system', label: 'System Settings' },
+  { key: 'machineSync', label: 'Machine Sync (LG)' },
   { key: 'backup', label: 'Backup & Restore' },
 ]
 
@@ -155,6 +166,184 @@ function SelectField({ label, value, options, onChange }: { label: string; value
 export function SettingsPage() {
   const [activeTab, setActiveTab] = useState<TabKey>('business')
   const [settings, setSettings] = useState(initialState)
+  const { pricing, save: savePricing } = usePricing()
+  const { managePricing: canManagePricing } = usePermissions()
+  const { logoUrl, saveLogo, resetLogo } = useBranding()
+  const { business, save: saveBusiness } = useBusiness()
+  const { connection: lg, save: saveLg } = useLgConnection()
+  const { manageMachines } = usePermissions()
+  const [savedConfig, setSavedConfig] = useState(false)
+  const [backupNote, setBackupNote] = useState('')
+
+  // --- LG account connection (Machine Sync tab) ---
+  const [lgForm, setLgForm] = useState({ email: '', password: '', region: 'PH' })
+  const [lgConnecting, setLgConnecting] = useState(false)
+  const [lgError, setLgError] = useState('')
+  const lgStatus = useLgStatus()
+
+  useEffect(() => {
+    setLgForm({ email: lg.email, password: lg.password, region: lg.region })
+  }, [lg])
+
+  // Save the LG credentials so the sync job (GitHub Actions) can log in. The
+  // scheduled job writes live status to Firestore within a few minutes; if an
+  // on-demand backend (Cloud Function) happens to exist, we also trigger it now.
+  const handleLgConnect = async () => {
+    setLgError('')
+    setLgConnecting(true)
+    const creds = { email: lgForm.email, password: lgForm.password, region: lgForm.region }
+    try {
+      await saveLg({ ...creds, enabled: true, connected: true, connectedAt: Date.now() })
+      // Best-effort immediate sync — ignored if no callable backend is deployed
+      // (the scheduled GitHub Actions job will pick it up either way).
+      try {
+        await syncLgNow()
+      } catch {
+        /* no on-demand backend — scheduled sync handles it */
+      }
+    } catch (error) {
+      setLgError(error instanceof Error ? error.message : 'Could not save LG credentials.')
+      await saveLg({ ...creds, enabled: false, connected: false })
+    }
+    setLgConnecting(false)
+  }
+
+  const handleLgSyncNow = async () => {
+    setLgError('')
+    setLgConnecting(true)
+    try {
+      await syncLgNow()
+    } catch {
+      // No on-demand backend (GitHub Actions model) — guide the user to trigger it.
+      setLgError('On-demand sync isn’t available on this setup. Live status refreshes every ~5 minutes automatically, or run the “LG Machine Sync” workflow in GitHub → Actions.')
+    }
+    setLgConnecting(false)
+  }
+
+  const handleLgDisconnect = async () => {
+    await saveLg({ ...lg, enabled: false, connected: false })
+  }
+
+  useEffect(() => {
+    setSettings((current) => ({
+      ...current,
+      businessName: business.name,
+      branchName: business.branch,
+      address: business.address,
+      contactNumber: business.contact,
+      tin: business.tin,
+      footerMessage: business.footer,
+    }))
+  }, [business])
+
+  const handleSaveConfig = () => {
+    void saveBusiness({
+      name: settings.businessName,
+      branch: settings.branchName,
+      address: settings.address,
+      contact: settings.contactNumber,
+      tin: settings.tin,
+      footer: settings.footerMessage,
+    })
+    setSavedConfig(true)
+    setTimeout(() => setSavedConfig(false), 2500)
+  }
+
+  const handleBackup = async () => {
+    setBackupNote('Preparing backup…')
+    try {
+      await backupDatabase()
+      setBackupNote('Backup downloaded.')
+    } catch {
+      setBackupNote('Backup failed.')
+    }
+    setTimeout(() => setBackupNote(''), 3000)
+  }
+
+  const handleRestore = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0]
+    if (!file) return
+    setBackupNote('Restoring…')
+    try {
+      await restoreDatabase(JSON.parse(await file.text()))
+      setBackupNote('Restore complete.')
+    } catch {
+      setBackupNote('Restore failed — invalid backup file.')
+    }
+    event.target.value = ''
+    setTimeout(() => setBackupNote(''), 3000)
+  }
+
+  const handleExportSettings = () => {
+    downloadJson('laundry-settings', {
+      business,
+      pricing: priceForm,
+      branding: { logoDataUrl: logoUrl.startsWith('data:') ? logoUrl : '' },
+    })
+  }
+
+  const handleLogoUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0]
+    if (!file) return
+    try {
+      const dataUrl = await fileToResizedDataUrl(file)
+      await saveLogo(dataUrl)
+    } catch (error) {
+      console.error('Logo upload failed:', error)
+    }
+    event.target.value = ''
+  }
+  const [priceForm, setPriceForm] = useState(pricing)
+  const [pricingSaved, setPricingSaved] = useState(false)
+
+  useEffect(() => setPriceForm(pricing), [pricing])
+
+  type ItemKey = 'services' | 'addOns' | 'products'
+
+  const updateItem = (key: ItemKey, index: number, field: keyof PriceItem, value: string) => {
+    setPriceForm((current) => ({
+      ...current,
+      [key]: current[key].map((item, i) =>
+        i === index ? { ...item, [field]: field === 'price' ? Number(value) || 0 : value } : item,
+      ),
+    }))
+    setPricingSaved(false)
+  }
+
+  const removeItem = (key: ItemKey, index: number) => {
+    setPriceForm((current) => ({ ...current, [key]: current[key].filter((_, i) => i !== index) }))
+    setPricingSaved(false)
+  }
+
+  const addItem = (key: ItemKey) => {
+    setPriceForm((current) => ({ ...current, [key]: [...current[key], { name: 'New item', price: 0 }] }))
+    setPricingSaved(false)
+  }
+
+  const updateLoadType = (index: number, field: 'name' | 'mode' | 'kgPerLoad' | 'pricePerKilo' | 'minKg', value: string) => {
+    setPriceForm((current) => ({
+      ...current,
+      loadTypes: current.loadTypes.map((type, i) =>
+        i === index ? { ...type, [field]: field === 'name' || field === 'mode' ? value : Number(value) || 0 } : type,
+      ),
+    }))
+    setPricingSaved(false)
+  }
+
+  const removeLoadType = (index: number) => {
+    setPriceForm((current) => ({ ...current, loadTypes: current.loadTypes.filter((_, i) => i !== index) }))
+    setPricingSaved(false)
+  }
+
+  const addLoadType = () => {
+    setPriceForm((current) => ({ ...current, loadTypes: [...current.loadTypes, { name: 'New type', mode: 'per-load', kgPerLoad: 7, pricePerKilo: 0, minKg: 0 }] }))
+    setPricingSaved(false)
+  }
+
+  const handleSavePricing = () => {
+    void savePricing(priceForm)
+    setPricingSaved(true)
+  }
   const [bluetoothEnabled, setBluetoothEnabled] = useState(false)
   const [isScanning, setIsScanning] = useState(false)
   const [bluetoothDevices, setBluetoothDevices] = useState<PrinterDevice[]>(sampleBluetoothDevices)
@@ -234,22 +423,277 @@ export function SettingsPage() {
               </div>
             </SectionCard>
 
-            <SectionCard title="Business Branding" subtitle="Upload and preview the business identity displayed on receipts and history summaries.">
+            <SectionCard title="Business Logo" subtitle="Upload your own logo — it appears on the sidebar, login screen, and browser tab.">
               <div className="space-y-4">
-                <div className="rounded-2xl border border-dashed border-slate-300 p-6 text-center text-sm text-slate-500">
-                  <FaUpload className="mx-auto mb-3 text-xl text-blue-600" />
-                  <p>Upload Business Logo</p>
-                  <button className="mt-3 rounded-2xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-700">Choose File</button>
-                </div>
-                <div className="rounded-2xl bg-slate-50 p-4">
-                  <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-400">Preview</p>
-                  <div className="mt-3 rounded-2xl border border-slate-200 bg-white p-4">
-                    <p className="text-lg font-semibold text-slate-900">{settings.businessName}</p>
-                    <p className="text-sm text-slate-600">{settings.branchName}</p>
-                    <p className="text-sm text-slate-500">{settings.address}</p>
-                    <p className="mt-2 text-sm text-slate-500">{settings.footerMessage}</p>
+                <div className="flex items-center gap-4 rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                  <div className="flex h-20 w-20 shrink-0 items-center justify-center overflow-hidden rounded-2xl bg-white ring-1 ring-slate-200">
+                    <img src={logoUrl} alt="Current logo" className="h-full w-full object-contain" />
+                  </div>
+                  <div>
+                    <p className="text-sm font-semibold text-slate-900">Current logo</p>
+                    <p className="text-xs text-slate-500">PNG or JPG. It's resized automatically and stored securely.</p>
                   </div>
                 </div>
+
+                {canManagePricing ? (
+                  <div className="flex flex-wrap gap-2">
+                    <label className="flex cursor-pointer items-center gap-2 rounded-2xl bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-blue-700">
+                      <FaUpload /> Upload Logo
+                      <input type="file" accept="image/*" onChange={handleLogoUpload} className="hidden" />
+                    </label>
+                    <button onClick={() => void resetLogo()} className="rounded-2xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 transition hover:bg-slate-50">
+                      Reset to Default
+                    </button>
+                  </div>
+                ) : (
+                  <p className="rounded-2xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-semibold text-amber-700">
+                    Only Administrators and Managers can change the logo.
+                  </p>
+                )}
+              </div>
+            </SectionCard>
+          </div>
+        )
+      case 'pricing':
+        return (
+          <div className="space-y-6">
+            {!canManagePricing ? (
+              <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-semibold text-amber-700">
+                View only — pricing can be changed by Administrators and Managers.
+              </div>
+            ) : null}
+
+            <div className="grid gap-6 xl:grid-cols-2">
+              <SectionCard title="Load & Kilo Settings" subtitle="Machine minimum load and optional per-kilo surcharge.">
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <FormField label="Minimum load per machine (kg)">
+                    <input
+                      type="number"
+                      value={priceForm.minLoadKg}
+                      disabled={!canManagePricing}
+                      onChange={(event) => { setPriceForm((c) => ({ ...c, minLoadKg: Number(event.target.value) || 1 })); setPricingSaved(false) }}
+                      className="w-full rounded-2xl border border-slate-200 px-3 py-2.5 outline-none disabled:opacity-60"
+                    />
+                  </FormField>
+                  <FormField label="Price per kilo surcharge (₱)">
+                    <input
+                      type="number"
+                      value={priceForm.pricePerKilo}
+                      disabled={!canManagePricing}
+                      onChange={(event) => { setPriceForm((c) => ({ ...c, pricePerKilo: Number(event.target.value) || 0 })); setPricingSaved(false) }}
+                      className="w-full rounded-2xl border border-slate-200 px-3 py-2.5 outline-none disabled:opacity-60"
+                    />
+                  </FormField>
+                </div>
+                <p className="mt-3 rounded-2xl bg-slate-50 px-3 py-2 text-xs text-slate-500">
+                  Loads = weight ÷ {priceForm.minLoadKg}kg (rounded up). Service charge = service price × loads. The per-kilo surcharge (₱{priceForm.pricePerKilo}/kg) is added on top; leave it at 0 for pure per-load pricing.
+                </p>
+
+                <div className="mt-4 border-t border-slate-100 pt-4">
+                  <p className="mb-3 text-sm font-semibold text-slate-700">Loyalty Points</p>
+                  <div className="grid gap-4 sm:grid-cols-2">
+                    <FormField label="Points earned per job order">
+                      <input
+                        type="number"
+                        value={priceForm.pointsPerOrder}
+                        disabled={!canManagePricing}
+                        onChange={(event) => { setPriceForm((c) => ({ ...c, pointsPerOrder: Number(event.target.value) || 0 })); setPricingSaved(false) }}
+                        className="w-full rounded-2xl border border-slate-200 px-3 py-2.5 outline-none disabled:opacity-60"
+                      />
+                    </FormField>
+                    <FormField label="Points per ₱1 (redeem rate)">
+                      <input
+                        type="number"
+                        min="1"
+                        value={priceForm.pointsPerPeso}
+                        disabled={!canManagePricing}
+                        onChange={(event) => { setPriceForm((c) => ({ ...c, pointsPerPeso: Number(event.target.value) || 1 })); setPricingSaved(false) }}
+                        className="w-full rounded-2xl border border-slate-200 px-3 py-2.5 outline-none disabled:opacity-60"
+                      />
+                    </FormField>
+                  </div>
+                  <p className="mt-3 rounded-2xl bg-slate-50 px-3 py-2 text-xs text-slate-500">
+                    Registered customers earn <span className="font-semibold">{priceForm.pointsPerOrder} pts</span> per job order. Redeem rate: <span className="font-semibold">{priceForm.pointsPerPeso} pts = ₱1</span> (₱{(1 / (priceForm.pointsPerPeso || 1)).toFixed(3)} per point). Walk-ins earn no points.
+                  </p>
+                </div>
+              </SectionCard>
+
+              <SectionCard title="Save Changes" subtitle="Apply pricing across the Job Order screen.">
+                <div className="space-y-3">
+                  <button
+                    onClick={handleSavePricing}
+                    disabled={!canManagePricing}
+                    className="flex items-center gap-2 rounded-2xl bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-blue-700 disabled:opacity-50"
+                  >
+                    <FaSave /> Save Pricing
+                  </button>
+                  {pricingSaved ? (
+                    <div className="flex items-center gap-2 rounded-2xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm font-semibold text-emerald-700">
+                      <FaCheckCircle /> Pricing saved — it's now live on Job Orders.
+                    </div>
+                  ) : null}
+                </div>
+              </SectionCard>
+            </div>
+
+            <SectionCard title="Load Types" subtitle="Tag each laundry type and choose how it's priced — per load (by machine capacity) or per kilo (₱/kg with a minimum weight).">
+              <div className="space-y-3">
+                {priceForm.loadTypes.map((type, index) => (
+                  <div key={index} className="rounded-2xl border border-slate-200 p-3">
+                    <div className="flex items-center gap-2">
+                      <input
+                        value={type.name}
+                        disabled={!canManagePricing}
+                        onChange={(event) => updateLoadType(index, 'name', event.target.value)}
+                        className="flex-1 rounded-2xl border border-slate-200 px-3 py-2 text-sm font-semibold outline-none disabled:opacity-60"
+                        placeholder="e.g. Normal clothes / Towels / Per Kilo"
+                      />
+                      <select
+                        value={type.mode}
+                        disabled={!canManagePricing}
+                        onChange={(event) => updateLoadType(index, 'mode', event.target.value)}
+                        className="rounded-2xl border border-slate-200 px-3 py-2 text-sm outline-none disabled:opacity-60"
+                      >
+                        <option value="per-load">Per load</option>
+                        <option value="per-kilo">Per kilo</option>
+                      </select>
+                      {canManagePricing ? (
+                        <button onClick={() => removeLoadType(index)} className="rounded-xl border border-rose-200 p-2.5 text-rose-600 transition hover:bg-rose-50">
+                          <FaTrash />
+                        </button>
+                      ) : null}
+                    </div>
+                    <div className="mt-2 grid gap-2 sm:grid-cols-3">
+                      <label className="space-y-1">
+                        <span className="text-xs font-semibold text-slate-500">{type.mode === 'per-kilo' ? 'Machine kg/load' : 'kg per load'}</span>
+                        <input type="number" step="0.5" value={type.kgPerLoad} disabled={!canManagePricing} onChange={(event) => updateLoadType(index, 'kgPerLoad', event.target.value)} className="w-full rounded-2xl border border-slate-200 px-3 py-2 text-sm outline-none disabled:opacity-60" />
+                      </label>
+                      <label className="space-y-1">
+                        <span className="text-xs font-semibold text-slate-500">{type.mode === 'per-kilo' ? 'Base ₱/kg' : 'Surcharge ₱/kg'}</span>
+                        <input type="number" value={type.pricePerKilo} disabled={!canManagePricing} onChange={(event) => updateLoadType(index, 'pricePerKilo', event.target.value)} className="w-full rounded-2xl border border-slate-200 px-3 py-2 text-sm outline-none disabled:opacity-60" />
+                      </label>
+                      <label className={`space-y-1 ${type.mode === 'per-kilo' ? '' : 'opacity-40'}`}>
+                        <span className="text-xs font-semibold text-slate-500">Minimum kg</span>
+                        <input type="number" step="0.5" value={type.minKg} disabled={!canManagePricing || type.mode !== 'per-kilo'} onChange={(event) => updateLoadType(index, 'minKg', event.target.value)} className="w-full rounded-2xl border border-slate-200 px-3 py-2 text-sm outline-none disabled:opacity-60" />
+                      </label>
+                    </div>
+                    <p className="mt-2 text-xs text-slate-500">
+                      {type.mode === 'per-kilo'
+                        ? `Charge = max(weight, ${type.minKg}kg) × ₱${type.pricePerKilo}/kg. Loads for machines = weight ÷ ${type.kgPerLoad}kg.`
+                        : `Loads = weight ÷ ${type.kgPerLoad}kg. Service price × loads${type.pricePerKilo > 0 ? ` + ₱${type.pricePerKilo}/kg` : ''}.`}
+                    </p>
+                  </div>
+                ))}
+                {canManagePricing ? (
+                  <button onClick={addLoadType} className="flex items-center gap-2 rounded-2xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-50">
+                    <FaPlus /> Add Load Type
+                  </button>
+                ) : null}
+              </div>
+            </SectionCard>
+
+            <SectionCard title="Service Prices (per load)" subtitle="Flat price charged per load for each laundry service.">
+              <div className="space-y-2">
+                {priceForm.services.map((item, index) => (
+                  <div key={index} className="flex items-center gap-2">
+                    <input
+                      value={item.name}
+                      disabled={!canManagePricing}
+                      onChange={(event) => updateItem('services', index, 'name', event.target.value)}
+                      className="flex-1 rounded-2xl border border-slate-200 px-3 py-2 text-sm outline-none disabled:opacity-60"
+                    />
+                    <div className="flex items-center gap-1 rounded-2xl border border-slate-200 px-3 py-2">
+                      <span className="text-sm text-slate-400">₱</span>
+                      <input
+                        type="number"
+                        value={item.price}
+                        disabled={!canManagePricing}
+                        onChange={(event) => updateItem('services', index, 'price', event.target.value)}
+                        className="w-20 text-sm outline-none disabled:opacity-60"
+                      />
+                    </div>
+                    {canManagePricing ? (
+                      <button onClick={() => removeItem('services', index)} className="rounded-xl border border-rose-200 p-2.5 text-rose-600 transition hover:bg-rose-50">
+                        <FaTrash />
+                      </button>
+                    ) : null}
+                  </div>
+                ))}
+                {canManagePricing ? (
+                  <button onClick={() => addItem('services')} className="flex items-center gap-2 rounded-2xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-50">
+                    <FaPlus /> Add Service
+                  </button>
+                ) : null}
+              </div>
+            </SectionCard>
+
+            <SectionCard title="Add-on Fees (flat)" subtitle="One-time fees added per order (pickup, delivery, hanger, etc.).">
+              <div className="space-y-2">
+                {priceForm.addOns.map((item, index) => (
+                  <div key={index} className="flex items-center gap-2">
+                    <input
+                      value={item.name}
+                      disabled={!canManagePricing}
+                      onChange={(event) => updateItem('addOns', index, 'name', event.target.value)}
+                      className="flex-1 rounded-2xl border border-slate-200 px-3 py-2 text-sm outline-none disabled:opacity-60"
+                    />
+                    <div className="flex items-center gap-1 rounded-2xl border border-slate-200 px-3 py-2">
+                      <span className="text-sm text-slate-400">₱</span>
+                      <input
+                        type="number"
+                        value={item.price}
+                        disabled={!canManagePricing}
+                        onChange={(event) => updateItem('addOns', index, 'price', event.target.value)}
+                        className="w-20 text-sm outline-none disabled:opacity-60"
+                      />
+                    </div>
+                    {canManagePricing ? (
+                      <button onClick={() => removeItem('addOns', index)} className="rounded-xl border border-rose-200 p-2.5 text-rose-600 transition hover:bg-rose-50">
+                        <FaTrash />
+                      </button>
+                    ) : null}
+                  </div>
+                ))}
+                {canManagePricing ? (
+                  <button onClick={() => addItem('addOns')} className="flex items-center gap-2 rounded-2xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-50">
+                    <FaPlus /> Add Add-on
+                  </button>
+                ) : null}
+              </div>
+            </SectionCard>
+
+            <SectionCard title="Retail Products" subtitle="Items sold alongside laundry (detergent, hangers, bags). Shown on the Job Order screen.">
+              <div className="space-y-2">
+                {priceForm.products.map((item, index) => (
+                  <div key={index} className="flex items-center gap-2">
+                    <input
+                      value={item.name}
+                      disabled={!canManagePricing}
+                      onChange={(event) => updateItem('products', index, 'name', event.target.value)}
+                      className="flex-1 rounded-2xl border border-slate-200 px-3 py-2 text-sm outline-none disabled:opacity-60"
+                    />
+                    <div className="flex items-center gap-1 rounded-2xl border border-slate-200 px-3 py-2">
+                      <span className="text-sm text-slate-400">₱</span>
+                      <input
+                        type="number"
+                        value={item.price}
+                        disabled={!canManagePricing}
+                        onChange={(event) => updateItem('products', index, 'price', event.target.value)}
+                        className="w-20 text-sm outline-none disabled:opacity-60"
+                      />
+                    </div>
+                    {canManagePricing ? (
+                      <button onClick={() => removeItem('products', index)} className="rounded-xl border border-rose-200 p-2.5 text-rose-600 transition hover:bg-rose-50">
+                        <FaTrash />
+                      </button>
+                    ) : null}
+                  </div>
+                ))}
+                {canManagePricing ? (
+                  <button onClick={() => addItem('products')} className="flex items-center gap-2 rounded-2xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-50">
+                    <FaPlus /> Add Product
+                  </button>
+                ) : null}
               </div>
             </SectionCard>
           </div>
@@ -536,16 +980,139 @@ export function SettingsPage() {
             </SectionCard>
           </div>
         )
+      case 'machineSync':
+        return (
+          <div className="space-y-6">
+            {!manageMachines ? (
+              <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-semibold text-amber-700">
+                View only — the LG connection can be changed by Administrators and Managers.
+              </div>
+            ) : null}
+
+            <div className="rounded-2xl border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-800">
+              <p className="font-semibold">How automatic machine monitoring works</p>
+              <p className="mt-1 text-blue-700">
+                Sign in once here with the same LG account (email &amp; password) you use on the <span className="font-semibold">Laundry Crew Manager</span> website.
+                The backend then signs into LG for you every 5 minutes and shows each store's live washer/dryer availability below and on the
+                <span className="font-semibold"> Machine Monitoring</span> page. Your own manually-added machines keep working exactly as before.
+              </p>
+              <p className="mt-2 rounded-xl bg-blue-100/70 px-3 py-2 text-xs font-semibold text-blue-800">
+                Live status is refreshed by the scheduled sync job every ~5 minutes — setup in <span className="font-mono">lg-sync/SETUP.md</span>.
+              </p>
+            </div>
+
+            <div className="grid gap-6 xl:grid-cols-[0.95fr_1.05fr]">
+              <SectionCard title="LG Account Sign-in" subtitle="The same email & password you use on the Laundry Crew Manager site.">
+                <div className="space-y-4">
+                  <FormField label="Email ID">
+                    <input
+                      type="email"
+                      value={lgForm.email}
+                      disabled={!manageMachines}
+                      onChange={(event) => setLgForm((c) => ({ ...c, email: event.target.value }))}
+                      placeholder="your-lg-account@email.com"
+                      className="w-full rounded-2xl border border-slate-200 px-3 py-2.5 outline-none disabled:opacity-60"
+                    />
+                  </FormField>
+                  <FormField label="Password">
+                    <input
+                      type="password"
+                      value={lgForm.password}
+                      disabled={!manageMachines}
+                      onChange={(event) => setLgForm((c) => ({ ...c, password: event.target.value }))}
+                      placeholder="••••••••••••"
+                      className="w-full rounded-2xl border border-slate-200 px-3 py-2.5 outline-none disabled:opacity-60"
+                    />
+                  </FormField>
+                  <SelectField label="Region" value={lgForm.region} options={['PH', 'KR', 'US', 'SG']} onChange={(value) => setLgForm((c) => ({ ...c, region: value }))} />
+
+                  <div className="flex flex-wrap gap-2">
+                    {lg.connected ? (
+                      <button onClick={handleLgDisconnect} disabled={!manageMachines} className="flex items-center gap-2 rounded-2xl border border-rose-200 bg-rose-50 px-4 py-2.5 text-sm font-semibold text-rose-700 transition hover:bg-rose-100 disabled:opacity-50">
+                        <FaUnlink /> Disconnect
+                      </button>
+                    ) : (
+                      <button onClick={handleLgConnect} disabled={!manageMachines || lgConnecting} className="flex items-center gap-2 rounded-2xl bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-blue-700 disabled:opacity-50">
+                        {lgConnecting ? <FaSpinner className="animate-spin" /> : <FaLink />} Sign in
+                      </button>
+                    )}
+                    {lg.connected ? (
+                      <button onClick={handleLgSyncNow} disabled={!manageMachines || lgConnecting} className="flex items-center gap-2 rounded-2xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 transition hover:bg-slate-50 disabled:opacity-50">
+                        {lgConnecting ? <FaSpinner className="animate-spin" /> : <FaSync />} Sync now
+                      </button>
+                    ) : null}
+                  </div>
+
+                  {lgError ? (
+                    <div className="flex items-center gap-2 rounded-2xl border border-rose-200 bg-rose-50 px-3 py-2 text-sm font-semibold text-rose-700">
+                      <FaExclamationTriangle /> {lgError}
+                    </div>
+                  ) : null}
+                  {lg.connected ? (
+                    <div className="flex items-center gap-2 rounded-2xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm font-semibold text-emerald-700">
+                      <FaCheckCircle /> Signed in to your LG account ({lg.region}). Live status syncs every 5 minutes.
+                    </div>
+                  ) : null}
+                  {lgStatus.error ? (
+                    <div className="flex items-center gap-2 rounded-2xl border border-rose-200 bg-rose-50 px-3 py-2 text-xs font-semibold text-rose-700">
+                      <FaExclamationTriangle /> Last sync error: {lgStatus.error}
+                    </div>
+                  ) : null}
+                </div>
+              </SectionCard>
+
+              <SectionCard title="Your LG Stores — Live Status" subtitle="Washer & dryer availability pulled straight from your LG account.">
+                {!lg.connected ? (
+                  <div className="rounded-2xl border border-dashed border-slate-200 p-8 text-center text-sm text-slate-500">
+                    Not signed in yet. Enter your LG email &amp; password and press Sign in.
+                  </div>
+                ) : !lgStatus.stores || lgStatus.stores.length === 0 ? (
+                  <div className="rounded-2xl border border-dashed border-slate-200 p-8 text-center text-sm text-slate-500">
+                    Waiting for the first sync… the scheduled job runs every ~5 minutes. To sync immediately, open GitHub → Actions → <span className="font-semibold">LG Machine Sync</span> → Run workflow.
+                  </div>
+                ) : (
+                  <div className="space-y-2">
+                    {lgStatus.stores.map((store) => (
+                      <div key={store.storeId} className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
+                        <p className="text-sm font-semibold text-slate-900">{store.storeName}</p>
+                        <div className="mt-2 grid grid-cols-2 gap-2 text-xs">
+                          <div className="rounded-xl bg-white px-3 py-2 ring-1 ring-slate-100">
+                            <p className="font-semibold text-slate-700">Washers</p>
+                            <p className="text-slate-500">{store.washer.standby} free · {store.washer.usage} running · {store.washer.offline} offline</p>
+                          </div>
+                          <div className="rounded-xl bg-white px-3 py-2 ring-1 ring-slate-100">
+                            <p className="font-semibold text-slate-700">Dryers</p>
+                            <p className="text-slate-500">{store.dryer.standby} free · {store.dryer.usage} running · {store.dryer.offline} offline</p>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                    {lgStatus.syncedAt ? (
+                      <p className="pt-1 text-xs text-slate-400">Last synced {new Date(lgStatus.syncedAt).toLocaleString()}</p>
+                    ) : null}
+                  </div>
+                )}
+              </SectionCard>
+            </div>
+          </div>
+        )
       case 'backup':
         return (
           <div className="grid gap-6 xl:grid-cols-[1.1fr_0.9fr]">
-            <SectionCard title="Backup & Restore" subtitle="Safeguard the configuration and data files.">
+            <SectionCard title="Backup & Restore" subtitle="Download a full JSON backup of your data, or restore from one.">
               <div className="flex flex-wrap gap-2">
-                <button className="flex items-center gap-2 rounded-2xl bg-blue-600 px-3 py-2 text-sm font-semibold text-white"><FaArchive /> Backup Database</button>
-                <button className="flex items-center gap-2 rounded-2xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-700"><FaFileImport /> Restore Database</button>
-                <button className="flex items-center gap-2 rounded-2xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-700"><FaFileExcel /> Export Settings</button>
-                <button className="flex items-center gap-2 rounded-2xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-700"><FaFileImport /> Import Settings</button>
+                <button onClick={handleBackup} className="flex items-center gap-2 rounded-2xl bg-blue-600 px-3 py-2 text-sm font-semibold text-white transition hover:bg-blue-700"><FaArchive /> Backup Database</button>
+                <label className="flex cursor-pointer items-center gap-2 rounded-2xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-50">
+                  <FaFileImport /> Restore Database
+                  <input type="file" accept="application/json" onChange={handleRestore} className="hidden" />
+                </label>
+                <button onClick={handleExportSettings} className="flex items-center gap-2 rounded-2xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"><FaFileExcel /> Export Settings</button>
+                <label className="flex cursor-pointer items-center gap-2 rounded-2xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-50">
+                  <FaFileImport /> Import Settings
+                  <input type="file" accept="application/json" onChange={handleRestore} className="hidden" />
+                </label>
               </div>
+              {backupNote ? <p className="mt-3 rounded-2xl bg-slate-50 px-3 py-2 text-sm font-semibold text-slate-600">{backupNote}</p> : null}
             </SectionCard>
 
             <SectionCard title="Quick Summary" subtitle="Current configuration snapshot.">
@@ -574,9 +1141,9 @@ export function SettingsPage() {
               Configure business identity, printer behavior, receipt layout, system preferences, and backup operations from one place.
             </p>
           </div>
-          <div className="flex items-center gap-2 rounded-2xl bg-white/10 px-3 py-2 text-sm font-semibold text-blue-50">
-            <FaSave /> Save Configuration
-          </div>
+          <button onClick={handleSaveConfig} className="flex items-center gap-2 rounded-2xl bg-white px-4 py-2.5 text-sm font-semibold text-blue-700 transition hover:bg-blue-50">
+            <FaSave /> {savedConfig ? 'Saved!' : 'Save Business Info'}
+          </button>
         </div>
       </section>
 

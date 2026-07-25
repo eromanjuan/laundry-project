@@ -3,64 +3,21 @@ import { FaPlus, FaSearch } from 'react-icons/fa'
 import { ExpenseCharts } from '../components/ExpenseCharts'
 import { ExpenseFormModal } from '../components/ExpenseFormModal'
 import { ExpenseTable, type ExpenseRow } from '../components/ExpenseTable'
+import { ConfirmModal } from '../components/ConfirmModal'
 import { SummaryStat } from '../components/SummaryStat'
-
-const initialRows: ExpenseRow[] = [
-  {
-    id: 'EXP-1001',
-    date: '2026-07-20',
-    category: 'Detergent',
-    description: 'Bulk detergent purchase',
-    amount: '₱4,200',
-    paymentMethod: 'Cash',
-    paidTo: 'Clean Supply Co.',
-    recordedBy: 'Admin',
-    notes: 'Restocked for the week',
-  },
-  {
-    id: 'EXP-1002',
-    date: '2026-07-18',
-    category: 'Water Bill',
-    description: 'Water utility invoice',
-    amount: '₱1,760',
-    paymentMethod: 'Bank Transfer',
-    paidTo: 'Metro Water',
-    recordedBy: 'Finance',
-    notes: 'Monthly statement',
-  },
-  {
-    id: 'EXP-1003',
-    date: '2026-07-16',
-    category: 'Staff Salary',
-    description: 'Payroll for attendants',
-    amount: '₱18,500',
-    paymentMethod: 'Bank Transfer',
-    paidTo: 'Laundry Team',
-    recordedBy: 'Admin',
-    notes: 'Weekly payroll',
-  },
-  {
-    id: 'EXP-1004',
-    date: '2026-07-14',
-    category: 'Maintenance',
-    description: 'Washer repair kit',
-    amount: '₱2,860',
-    paymentMethod: 'GCash',
-    paidTo: 'Prime Appliance',
-    recordedBy: 'Operations',
-    notes: 'Replaced belts',
-  },
-]
+import { useCollection } from '../hooks/useCollection'
+import { seedExpenses, type ExpenseRecord } from '../data/seeds'
 
 const filterOptions = ['All', 'Detergent', 'Water Bill', 'Staff Salary', 'Maintenance', 'Supplies', 'Office']
 
 export function ExpensesPage() {
-  const [rows, setRows] = useState(initialRows)
+  const { data: rows, add, update, remove } = useCollection<ExpenseRecord>('expenses', seedExpenses)
   const [query, setQuery] = useState('')
   const [selectedFilter, setSelectedFilter] = useState('All')
   const [isModalOpen, setIsModalOpen] = useState(false)
   const [modalMode, setModalMode] = useState<'add' | 'edit'>('add')
   const [selectedRow, setSelectedRow] = useState<ExpenseRow | null>(null)
+  const [pendingDelete, setPendingDelete] = useState<ExpenseRecord | null>(null)
 
   const filteredRows = useMemo(() => {
     const search = query.trim().toLowerCase()
@@ -84,6 +41,26 @@ export function ExpensesPage() {
     }
   }, [rows])
 
+  const chartData = useMemo(() => {
+    const parse = (value: string) => Number.parseFloat(value.replace(/[^\d.-]/g, '')) || 0
+    const catMap = new Map<string, number>()
+    rows.forEach((row) => catMap.set(row.category, (catMap.get(row.category) || 0) + parse(row.amount)))
+    const categories = Array.from(catMap.entries())
+      .map(([label, value]) => ({ label, value }))
+      .sort((a, b) => b.value - a.value)
+      .slice(0, 6)
+
+    const now = new Date()
+    const months = Array.from({ length: 6 }, (_, index) => {
+      const date = new Date(now.getFullYear(), now.getMonth() - (5 - index), 1)
+      return { key: `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}` }
+    })
+    const monthly = months.map((month) =>
+      rows.filter((row) => (row.date || '').startsWith(month.key)).reduce((sum, row) => sum + parse(row.amount), 0),
+    )
+    return { categories, monthly }
+  }, [rows])
+
   const handleAdd = () => {
     setModalMode('add')
     setSelectedRow(null)
@@ -97,18 +74,18 @@ export function ExpensesPage() {
   }
 
   const handleDelete = (row: ExpenseRow) => {
-    if (window.confirm(`Delete ${row.id}?`)) {
-      setRows(rows.filter((item) => item.id !== row.id))
-    }
+    const record = rows.find((item) => item.id === row.id)
+    if (record) setPendingDelete(record)
   }
 
   const handleSave = (row: ExpenseRow) => {
     if (modalMode === 'edit' && selectedRow) {
-      setRows(rows.map((item) => (item.id === selectedRow.id ? row : item)))
+      const record = rows.find((item) => item.id === selectedRow.id)
+      if (record) void update(record, row as ExpenseRecord)
       return
     }
 
-    setRows([row, ...rows])
+    void add(row as ExpenseRecord)
   }
 
   return (
@@ -180,15 +157,13 @@ export function ExpensesPage() {
             onEdit={handleEdit}
             onDelete={handleDelete}
           />
-          <ExpenseCharts
-            monthly={[4200, 3800, 5200, 6100, 4700, 5600]}
-            categories={[
-              { label: 'Detergent', value: 4200 },
-              { label: 'Water Bill', value: 1760 },
-              { label: 'Staff Salary', value: 18500 },
-              { label: 'Maintenance', value: 2860 },
-            ]}
-          />
+          {rows.length === 0 ? (
+            <div className="rounded-3xl border border-dashed border-slate-200 bg-white p-12 text-center text-sm text-slate-500">
+              No expenses recorded yet. Add an expense to see spending trends and category breakdowns.
+            </div>
+          ) : (
+            <ExpenseCharts monthly={chartData.monthly} categories={chartData.categories} />
+          )}
         </div>
 
         <div className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm shadow-slate-200/70">
@@ -225,6 +200,17 @@ export function ExpensesPage() {
         onSave={handleSave}
         mode={modalMode}
         row={selectedRow}
+      />
+      <ConfirmModal
+        isOpen={Boolean(pendingDelete)}
+        title="Delete expense"
+        message={pendingDelete ? `Delete expense ${pendingDelete.id} (${pendingDelete.amount})? This cannot be undone.` : ''}
+        confirmLabel="Delete"
+        tone="danger"
+        onConfirm={() => {
+          if (pendingDelete) void remove(pendingDelete)
+        }}
+        onClose={() => setPendingDelete(null)}
       />
     </div>
   )

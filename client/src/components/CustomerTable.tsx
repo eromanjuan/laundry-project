@@ -1,4 +1,4 @@
-import { FaEllipsisH, FaTrash } from 'react-icons/fa'
+import { FaPen, FaTrash } from 'react-icons/fa'
 import { StatusBadge } from './StatusBadge'
 
 interface CustomerRow {
@@ -15,9 +15,13 @@ interface CustomerRow {
 
 interface CustomerTableProps {
   rows: CustomerRow[]
+  /** Only Administrators and Managers may edit/delete. */
+  canManage?: boolean
+  onEdit?: (row: CustomerRow) => void
+  onDelete?: (row: CustomerRow) => void
 }
 
-export function CustomerTable({ rows }: CustomerTableProps) {
+export function CustomerTable({ rows, canManage = false, onEdit, onDelete }: CustomerTableProps) {
   return (
     <div className="overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-sm shadow-slate-200/70">
       <div className="overflow-x-auto">
@@ -62,14 +66,26 @@ export function CustomerTable({ rows }: CustomerTableProps) {
                 <td className="px-5 py-3 font-semibold text-slate-900">{row.outstandingBalance}</td>
                 <td className="px-5 py-3 text-slate-600">{row.lastVisit}</td>
                 <td className="px-5 py-3">
-                  <div className="flex items-center gap-2">
-                    <button className="rounded-xl border border-slate-200 p-2 text-slate-600 transition hover:bg-slate-100">
-                      <FaEllipsisH />
-                    </button>
-                    <button className="rounded-xl border border-rose-200 p-2 text-rose-600 transition hover:bg-rose-50">
-                      <FaTrash />
-                    </button>
-                  </div>
+                  {canManage ? (
+                    <div className="flex items-center gap-2">
+                      <button
+                        onClick={() => onEdit?.(row)}
+                        title="Edit customer"
+                        className="rounded-xl border border-slate-200 p-2 text-slate-600 transition hover:bg-slate-100"
+                      >
+                        <FaPen />
+                      </button>
+                      <button
+                        onClick={() => onDelete?.(row)}
+                        title="Delete customer"
+                        className="rounded-xl border border-rose-200 p-2 text-rose-600 transition hover:bg-rose-50"
+                      >
+                        <FaTrash />
+                      </button>
+                    </div>
+                  ) : (
+                    <span className="text-xs text-slate-400">View only</span>
+                  )}
                 </td>
               </tr>
             ))}

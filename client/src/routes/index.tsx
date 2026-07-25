@@ -1,5 +1,6 @@
 import { createBrowserRouter, Navigate } from 'react-router-dom'
 import { ProtectedRoute } from '../components/ProtectedRoute'
+import { RouteError } from '../components/ErrorBoundary'
 import { AppLayout } from '../layouts/AppLayout'
 import { DashboardPage } from '../pages/DashboardPage'
 import { CustomersPage } from '../pages/CustomersPage'
@@ -17,6 +18,9 @@ import { LoginPage } from '../pages/LoginPage'
 import { UserManagementPage } from '../pages/UserManagementPage'
 
 export const router = createBrowserRouter([
+  {
+    errorElement: <RouteError />,
+    children: [
   {
     path: '/',
     element: <Navigate to="/login" replace />,
@@ -158,5 +162,7 @@ export const router = createBrowserRouter([
   {
     path: '*',
     element: <Navigate to="/dashboard" replace />,
+  },
+    ],
   },
 ])

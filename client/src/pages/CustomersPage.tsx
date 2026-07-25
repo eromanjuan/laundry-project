@@ -1,49 +1,21 @@
 import { useMemo, useState } from 'react'
 import { FaPlus } from 'react-icons/fa'
 import { AddCustomerModal, type CustomerFormValues } from '../components/AddCustomerModal'
+import { EditCustomerModal } from '../components/EditCustomerModal'
+import { ConfirmModal } from '../components/ConfirmModal'
 import { CustomerTable } from '../components/CustomerTable'
 import { SearchBar } from '../components/SearchBar'
-
-const initialCustomers = [
-  {
-    id: 'C-1001',
-    name: 'Maria Santos',
-    mobile: '0917 223 4410',
-    address: 'Block 12, Greenlane',
-    loyaltyPoints: 520,
-    totalOrders: 18,
-    outstandingBalance: '₱1,240',
-    lastVisit: '2 hrs ago',
-    status: 'VIP' as const,
-  },
-  {
-    id: 'C-1002',
-    name: 'Jose Cruz',
-    mobile: '0928 551 9032',
-    address: 'Unit 8B, Harbor Street',
-    loyaltyPoints: 210,
-    totalOrders: 9,
-    outstandingBalance: '₱380',
-    lastVisit: 'Yesterday',
-    status: 'Active' as const,
-  },
-  {
-    id: 'C-1003',
-    name: 'Rina Dela Cruz',
-    mobile: '0998 110 3345',
-    address: 'Lot 4, Pine Heights',
-    loyaltyPoints: 76,
-    totalOrders: 4,
-    outstandingBalance: '₱0',
-    lastVisit: '3 days ago',
-    status: 'Inactive' as const,
-  },
-]
+import { useCollection } from '../hooks/useCollection'
+import { usePermissions } from '../hooks/usePermissions'
+import { nextId, seedCustomers, type CustomerRecord } from '../data/seeds'
 
 export function CustomersPage() {
   const [query, setQuery] = useState('')
-  const [customers, setCustomers] = useState(initialCustomers)
+  const { data: customers, add, update, remove } = useCollection<CustomerRecord>('customers', seedCustomers)
+  const { manageCustomers: canManage } = usePermissions()
   const [isModalOpen, setIsModalOpen] = useState(false)
+  const [editing, setEditing] = useState<CustomerRecord | null>(null)
+  const [pendingDelete, setPendingDelete] = useState<CustomerRecord | null>(null)
 
   const filteredCustomers = useMemo(() => {
     const search = query.trim().toLowerCase()
@@ -59,8 +31,8 @@ export function CustomersPage() {
   }, [customers, query])
 
   const handleAddCustomer = (payload: CustomerFormValues) => {
-    const nextCustomer = {
-      id: `C-${String(customers.length + 1000).padStart(4, '0')}`,
+    void add({
+      id: nextId(customers, 'C-', 1001),
       name: payload.name,
       mobile: payload.mobile,
       address: payload.address,
@@ -68,10 +40,17 @@ export function CustomersPage() {
       totalOrders: 0,
       outstandingBalance: '₱0',
       lastVisit: 'Just added',
-      status: 'Active' as const,
-    }
+      status: 'Active',
+    })
+  }
 
-    setCustomers([nextCustomer, ...customers])
+  const handleEditSave = (changes: Partial<CustomerRecord>) => {
+    if (editing) void update(editing, changes)
+  }
+
+  const handleDelete = (row: { id: string }) => {
+    const record = customers.find((item) => item.id === row.id)
+    if (record) setPendingDelete(record)
   }
 
   return (
@@ -86,13 +65,15 @@ export function CustomersPage() {
             </p>
           </div>
 
-          <button
-            onClick={() => setIsModalOpen(true)}
-            className="flex items-center justify-center gap-2 rounded-2xl bg-white px-4 py-3 text-sm font-semibold text-blue-700 transition hover:bg-blue-50"
-          >
-            <FaPlus />
-            Add Customer
-          </button>
+          {canManage ? (
+            <button
+              onClick={() => setIsModalOpen(true)}
+              className="flex items-center justify-center gap-2 rounded-2xl bg-white px-4 py-3 text-sm font-semibold text-blue-700 transition hover:bg-blue-50"
+            >
+              <FaPlus />
+              Add Customer
+            </button>
+          ) : null}
         </div>
       </section>
 
@@ -107,10 +88,36 @@ export function CustomersPage() {
           </div>
         </div>
 
-        <CustomerTable rows={filteredCustomers} />
+        <CustomerTable
+          rows={filteredCustomers}
+          canManage={canManage}
+          onEdit={(row) => setEditing(customers.find((item) => item.id === row.id) ?? null)}
+          onDelete={handleDelete}
+        />
       </section>
 
       <AddCustomerModal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} onSubmit={handleAddCustomer} />
+      <EditCustomerModal
+        isOpen={Boolean(editing)}
+        onClose={() => setEditing(null)}
+        onSave={handleEditSave}
+        customer={editing}
+      />
+      <ConfirmModal
+        isOpen={Boolean(pendingDelete)}
+        title="Delete customer"
+        message={
+          pendingDelete
+            ? `Delete ${pendingDelete.name} (${pendingDelete.id})? This cannot be undone.`
+            : ''
+        }
+        confirmLabel="Delete"
+        tone="danger"
+        onConfirm={() => {
+          if (pendingDelete) void remove(pendingDelete)
+        }}
+        onClose={() => setPendingDelete(null)}
+      />
     </div>
   )
 }

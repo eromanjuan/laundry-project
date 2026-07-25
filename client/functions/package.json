@@ -1,0 +1,13 @@
+{
+  "name": "laundry-lg-sync",
+  "description": "LG Laundry Crew Manager sync for Laundry Project POS",
+  "main": "index.js",
+  "engines": {
+    "node": "20"
+  },
+  "dependencies": {
+    "firebase-admin": "^12.6.0",
+    "firebase-functions": "^5.1.1"
+  },
+  "private": true
+}

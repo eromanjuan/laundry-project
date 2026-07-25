@@ -1,0 +1,25 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Public username → email lookup (needed before sign-in for username login).
+    // Contains only { email }, no sensitive data.
+    match /usernames/{name} {
+      allow read: if true;
+      allow write: if request.auth != null;
+    }
+
+    // Business settings (logo, pricing, receipt info) — readable so the login
+    // screen can show branding; only signed-in users can change them.
+    match /settings/{doc} {
+      allow read: if true;
+      allow write: if request.auth != null;
+    }
+
+    // Everything else (customers, orders, payments, users, etc.):
+    // signed-in users only. This closes the public read/write hole.
+    match /{document=**} {
+      allow read, write: if request.auth != null;
+    }
+  }
+}

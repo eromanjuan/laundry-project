@@ -13,7 +13,14 @@ export interface ClaimRow {
   amountPaid: string
   balance: string
   paymentStatus: 'Paid' | 'Unpaid'
-  claimStatus: 'Ready for Claim' | 'Released'
+  claimStatus: string
+}
+
+const claimTone: Record<string, string> = {
+  'Ready for Claim': 'bg-blue-100 text-blue-700',
+  Released: 'bg-slate-200 text-slate-700',
+  Washing: 'bg-amber-100 text-amber-700',
+  Pending: 'bg-rose-100 text-rose-700',
 }
 
 interface ClaimTableProps {
@@ -67,7 +74,7 @@ export function ClaimTable({ rows, onView, onPay, onReceipt, onRelease }: ClaimT
                   </span>
                 </td>
                 <td className="px-4 py-3">
-                  <span className={`rounded-full px-2.5 py-1 text-xs font-semibold ${row.claimStatus === 'Released' ? 'bg-slate-100 text-slate-700' : 'bg-blue-100 text-blue-700'}`}>
+                  <span className={`rounded-full px-2.5 py-1 text-xs font-semibold ${claimTone[row.claimStatus] ?? 'bg-slate-100 text-slate-700'}`}>
                     {row.claimStatus}
                   </span>
                 </td>

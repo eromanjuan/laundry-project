@@ -5,9 +5,10 @@ interface ReceivePaymentModalProps {
   isOpen: boolean
   onClose: () => void
   row: PaymentRow | null
+  onSave?: (row: PaymentRow, cashReceived: number) => void
 }
 
-export function ReceivePaymentModal({ isOpen, onClose, row }: ReceivePaymentModalProps) {
+export function ReceivePaymentModal({ isOpen, onClose, row, onSave }: ReceivePaymentModalProps) {
   const [cashReceived, setCashReceived] = useState('')
 
   const total = Number.parseFloat((row?.amountDue ?? '0').replace(/[^\d.]/g, ''))
@@ -66,7 +67,17 @@ export function ReceivePaymentModal({ isOpen, onClose, row }: ReceivePaymentModa
 
         <div className="mt-6 flex justify-end gap-3">
           <button onClick={onClose} className="rounded-2xl border border-slate-200 px-4 py-2.5 text-sm font-medium text-slate-600 transition hover:bg-slate-100">Cancel</button>
-          <button className="rounded-2xl bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-blue-700">Save Payment</button>
+          <button
+            onClick={() => {
+              onSave?.(row, cashValue)
+              setCashReceived('')
+              onClose()
+            }}
+            disabled={cashValue <= 0}
+            className="rounded-2xl bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-blue-700 disabled:opacity-50"
+          >
+            Save Payment
+          </button>
         </div>
       </div>
     </div>

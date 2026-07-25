@@ -20,12 +20,17 @@ export function MachineStatusList({ machines }: MachineStatusListProps) {
           <h3 className="text-lg font-semibold text-slate-900">Machine Status</h3>
           <p className="text-sm text-slate-500">Live equipment readiness</p>
         </div>
-        <button onClick={() => navigate('/lg-machine-status')} className="text-sm font-semibold text-blue-600">
-          Open LG Module
+        <button onClick={() => navigate('/machine-monitoring')} className="text-sm font-semibold text-blue-600">
+          Manage Machines
         </button>
       </div>
 
       <div className="mt-5 space-y-3">
+        {machines.length === 0 ? (
+          <p className="rounded-2xl border border-dashed border-slate-200 p-6 text-center text-sm text-slate-500">
+            No machines yet. Add them in Machine Monitoring.
+          </p>
+        ) : null}
         {machines.map((machine) => (
           <div
             key={machine.name}

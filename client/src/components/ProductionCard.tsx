@@ -15,6 +15,8 @@ interface ProductionCardProps {
     paymentStatus: string
     status: string
     category: 'Express' | 'Full Service' | 'Self Service' | 'Commercial' | 'Ready Today'
+    startedAt?: string
+    releasedAt?: string
   }
 }
 
@@ -60,7 +62,8 @@ export function ProductionCard({ job }: ProductionCardProps) {
 
       <div className="mt-4 border-t border-slate-100 pt-3 text-xs text-slate-500">
         <p>Received: {job.timeReceived}</p>
-        <p>Release: {job.estimatedRelease}</p>
+        {job.startedAt ? <p>Started: {job.startedAt}</p> : null}
+        {job.releasedAt ? <p>Released: {job.releasedAt}</p> : null}
       </div>
 
       <div className="mt-4 flex flex-wrap gap-2">
