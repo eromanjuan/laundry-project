@@ -8,9 +8,9 @@ import { useCollection, type WithDocId } from '../hooks/useCollection'
 import { useAuth } from '../context/AuthContext'
 import { useBranding } from '../hooks/useBranding'
 import { useBusiness } from '../hooks/useBusiness'
-import QRCode from 'qrcode'
 import { printReceipt } from '../lib/printReceipt'
-import { trackUrl } from '../lib/tracking'
+import { publishStatus } from '../lib/tracking'
+import { buildOrderReceipt, trackQrDataUrl } from '../lib/receipts'
 import { seedActivity, seedOrders, todayISO, nowStamp, type ActivityRecord, type OrderRecord } from '../data/seeds'
 
 const filters = ['All', 'Paid', 'Unpaid', 'Today', 'This Week']
@@ -90,6 +90,7 @@ export function PaymentsPage() {
     const order = orders.find((entry) => entry.id === row.jobNumber)
     if (!order) return
     void update(order, { paymentStatus: 'Paid' })
+    void publishStatus(order.id, order.status, { paymentStatus: 'Paid', balance: '₱0' })
     void addActivity({
       id: `${Date.now()}-${Math.round(Math.random() * 1e6)}`,
       action: `${order.id}: payment received (${order.amount})`,
@@ -101,26 +102,8 @@ export function PaymentsPage() {
   const handleReceipt = async (row: PaymentRow) => {
     const order = orders.find((entry) => entry.id === row.jobNumber)
     if (!order) return
-    const paid = order.paymentStatus === 'Paid'
-    const qrDataUrl = await QRCode.toDataURL(trackUrl(order.id), { width: 220, margin: 1 }).catch(() => undefined)
-    printReceipt({
-      logoUrl,
-      businessName: business.name,
-      tagline: [business.address, business.contact].filter(Boolean).join(' • ') || 'Cleaner care, better living',
-      docType: paid ? 'OFFICIAL RECEIPT — PAID' : 'PROVISIONAL RECEIPT — UNPAID',
-      jobNumber: order.id,
-      customer: order.customer,
-      datetime: order.date ?? order.timeReceived,
-      meta: [{ label: 'Service', value: order.service }, { label: 'Weight', value: order.weight }],
-      totals: [
-        { label: 'Total', value: order.amount },
-        { label: 'Paid', value: paid ? order.amount : '₱0' },
-        { label: 'Balance', value: paid ? '₱0' : order.amount },
-        { label: 'Status', value: order.paymentStatus },
-      ],
-      footer: paid ? business.footer : 'UNPAID — settle the balance to get your official paid receipt.',
-      qrDataUrl,
-    })
+    const qr = await trackQrDataUrl(order.id)
+    printReceipt(buildOrderReceipt(order, business, logoUrl, qr, true))
   }
 
   return (

@@ -20,13 +20,27 @@ export interface ReceiptData {
   docType: string
   jobNumber: string
   customer: string
+  /** Transaction date & time (when the order was taken). */
   datetime: string
+  /** When this copy was printed — stamped on every print. */
+  printedAt?: string
   meta?: ReceiptLine[]
   items?: ReceiptItem[]
   totals?: ReceiptLine[]
   footer?: string
   /** Data-URL QR image the customer can scan to track their order status. */
   qrDataUrl?: string
+}
+
+/**
+ * Document label for a receipt. The very first print at save time is the sole
+ * OFFICIAL receipt; every later print is a COPY. An unpaid order can only ever
+ * be a PROVISIONAL receipt — it becomes eligible for an official (copy) reprint
+ * once fully paid.
+ */
+export function receiptDocType(paid: boolean, copy: boolean): string {
+  if (!paid) return 'PROVISIONAL RECEIPT — UNPAID'
+  return copy ? 'OFFICIAL RECEIPT — PAID (COPY)' : 'OFFICIAL RECEIPT — PAID'
 }
 
 function escapeHtml(value: string) {
@@ -56,6 +70,7 @@ function buildBody(data: ReceiptData) {
       <tr><td>Job #</td><td class="r b">${escapeHtml(data.jobNumber)}</td></tr>
       <tr><td>Customer</td><td class="r">${escapeHtml(data.customer)}</td></tr>
       <tr><td>Date</td><td class="r">${escapeHtml(data.datetime)}</td></tr>
+      ${data.printedAt ? `<tr><td>Printed</td><td class="r">${escapeHtml(data.printedAt)}</td></tr>` : ''}
       ${meta}
     </table>
     ${items ? `<div class="hr"></div><table>${items}</table>` : ''}
@@ -64,6 +79,26 @@ function buildBody(data: ReceiptData) {
     <div class="hr"></div>
     <div class="center muted">${escapeHtml(data.footer ?? 'Thank you! Please keep this receipt.')}</div>
   `
+}
+
+const PAPER_KEY = 'printer.paperSize'
+
+/** Persist the configured receipt paper width (called from Printer Settings). */
+export function setPaperSize(size: '58mm' | '80mm') {
+  try {
+    localStorage.setItem(PAPER_KEY, size)
+  } catch {
+    /* ignore storage errors */
+  }
+}
+
+/** Current receipt paper width — used to size the printout. Defaults to 80mm. */
+export function getPaperSize(): '58mm' | '80mm' {
+  try {
+    return localStorage.getItem(PAPER_KEY) === '58mm' ? '58mm' : '80mm'
+  } catch {
+    return '80mm'
+  }
 }
 
 /** Print one or more receipts in a single job (each separated by a cut line). */
@@ -84,11 +119,16 @@ export function printReceipts(list: ReceiptData[]) {
     .map((data) => `<div class="receipt">${buildBody(data)}</div>`)
     .join('<div class="cut">— — — — — — ✂ — — — — — —</div>')
 
+  const paper = getPaperSize()
+  // Content padding tightened for the narrower 58mm roll.
+  const pad = paper === '58mm' ? '4mm 2.5mm' : '5mm 4mm'
+  const fontSize = paper === '58mm' ? '11px' : '12px'
+
   doc.open()
   doc.write(`<!doctype html><html><head><meta charset="utf-8"><style>
-    @page { size: 80mm auto; margin: 0; }
+    @page { size: ${paper} auto; margin: 0; }
     html, body { margin: 0; padding: 0; }
-    body { width: 80mm; padding: 5mm 4mm; font-family: 'Courier New', ui-monospace, monospace; font-size: 12px; line-height: 1.4; color: #000; }
+    body { width: ${paper}; padding: ${pad}; font-family: 'Courier New', ui-monospace, monospace; font-size: ${fontSize}; line-height: 1.4; color: #000; }
     .center { text-align: center; }
     .muted { color: #222; font-size: 11px; }
     .title { font-weight: bold; font-size: 15px; letter-spacing: 1px; }

@@ -91,6 +91,8 @@ export interface OrderRecord {
   releasedAt?: string
   /** Retail products purchased with the order, e.g. "Detergent x2, Hanger x1". */
   extras?: string
+  /** Additional options chosen, e.g. "Pickup, Fabric Softener". */
+  addOns?: string
 }
 
 /** Local calendar date as YYYY-MM-DD (used for date-range filtering). */

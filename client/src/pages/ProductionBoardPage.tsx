@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { FaSearch, FaHistory } from 'react-icons/fa'
+import { FaSearch, FaHistory, FaTimes, FaCopy, FaExternalLinkAlt } from 'react-icons/fa'
 import { ProductionCard } from '../components/ProductionCard'
 import { ProductionColumn } from '../components/ProductionColumn'
 import { OrderDetailsModal, type WasherOption } from '../components/OrderDetailsModal'
@@ -9,12 +9,18 @@ import { SummaryStat } from '../components/SummaryStat'
 import { useCollection, type WithDocId } from '../hooks/useCollection'
 import { useLgStatus } from '../hooks/useLgStatus'
 import { useAuth } from '../context/AuthContext'
+import { useBranding } from '../hooks/useBranding'
+import { useBusiness } from '../hooks/useBusiness'
+import { usePricing } from '../hooks/usePricing'
 import { seedActivity, seedMachines, seedOrders, todayISO, nowStamp, type ActivityRecord, type MachineRecord, type OrderRecord } from '../data/seeds'
 import { findFreeWasher, findFreeDryer, oldestPending } from '../lib/machines'
-import { publishStatus } from '../lib/tracking'
+import { publishStatus, trackUrl } from '../lib/tracking'
+import { printReceipt } from '../lib/printReceipt'
+import { buildOrderReceipt, buildOrderClaimStub, trackQrDataUrl } from '../lib/receipts'
 
 const statuses = ['Pending', 'Washing', 'Drying', 'Ready', 'Claimed']
-const filters = ['All', 'Express', 'Full Service', 'Self Service', 'Commercial', 'Ready Today']
+// Stage filter — mirrors the workflow columns.
+const stageFilters = ['All', 'Pending', 'Washing', 'Drying', 'Ready', 'Claimed']
 
 /** Colour chip per workflow column. */
 const columnAccent: Record<string, string> = {
@@ -42,16 +48,25 @@ export function ProductionBoardPage() {
   const { data: activity, add: addActivity } = useCollection<ActivityRecord>('activity', seedActivity)
   const lgStatus = useLgStatus()
   const { user, verifyPassword } = useAuth()
+  const { logoUrl } = useBranding()
+  const { business } = useBusiness()
+  const { pricing } = usePricing()
   const [showLog, setShowLog] = useState(false)
   const [query, setQuery] = useState('')
 
   const logActivity = (action: string) => {
     void addActivity({ id: `${Date.now()}-${Math.round(Math.random() * 1e6)}`, action, user: user?.name ?? 'Unknown', at: nowStamp() })
   }
-  const [activeFilter, setActiveFilter] = useState('All')
+  // Stage filter (workflow columns) + a secondary detail filter.
+  const [stageFilter, setStageFilter] = useState('All')
+  const [serviceFilter, setServiceFilter] = useState('All')
+  const [loadTypeFilter, setLoadTypeFilter] = useState('All')
+  const [priorityFilter, setPriorityFilter] = useState('All')
+  const [addOnFilter, setAddOnFilter] = useState('All')
   const [fromDate, setFromDate] = useState(todayISO())
   const [toDate, setToDate] = useState(todayISO())
   const [selectedJob, setSelectedJob] = useState<(OrderRecord & WithDocId) | null>(null)
+  const [codeJob, setCodeJob] = useState<{ job: OrderRecord & WithDocId; url: string; qr?: string } | null>(null)
   const [feedback, setFeedback] = useState<{ tone: 'error' | 'success'; text: string } | null>(null)
   // A pending backward move awaiting reason + password confirmation.
   const [pendingRevert, setPendingRevert] = useState<
@@ -61,16 +76,21 @@ export function ProductionBoardPage() {
 
   const filteredJobs = useMemo(() => {
     const search = query.trim().toLowerCase()
+    const svc = (job: OrderRecord) => (job.service ?? '').toLowerCase()
 
     return jobs.filter((job) => {
       const date = orderDate(job)
       // Only apply date bounds to orders that have a resolvable date.
       const matchesDate = !date || ((!fromDate || date >= fromDate) && (!toDate || date <= toDate))
-      const matchesFilter = activeFilter === 'All' || job.category === activeFilter || job.priority === activeFilter
+      const matchesStage = stageFilter === 'All' || job.status === stageFilter
+      const matchesService = serviceFilter === 'All' || svc(job).includes(serviceFilter.toLowerCase())
+      const matchesLoadType = loadTypeFilter === 'All' || svc(job).includes(loadTypeFilter.toLowerCase())
+      const matchesPriority = priorityFilter === 'All' || job.priority === priorityFilter
+      const matchesAddOn = addOnFilter === 'All' || (job.addOns ?? '').toLowerCase().includes(addOnFilter.toLowerCase())
       const matchesSearch = !search || [job.id, job.customer].join(' ').toLowerCase().includes(search)
-      return matchesDate && matchesFilter && matchesSearch
+      return matchesDate && matchesStage && matchesService && matchesLoadType && matchesPriority && matchesAddOn && matchesSearch
     })
-  }, [jobs, query, activeFilter, fromDate, toDate])
+  }, [jobs, query, stageFilter, serviceFilter, loadTypeFilter, priorityFilter, addOnFilter, fromDate, toDate])
 
   const groupedJobs = statuses.reduce((acc, status) => {
     acc[status] = filteredJobs.filter((job) => job.status === status)
@@ -288,9 +308,36 @@ export function ProductionBoardPage() {
   // Settle the balance so the order can be released. Keeps the modal open, updated.
   const handlePay = (job: OrderRecord & WithDocId) => {
     void update(job, { paymentStatus: 'Paid' })
+    void publishStatus(job.id, job.status, { paymentStatus: 'Paid', balance: '₱0' })
     logActivity(`${job.id}: payment collected (${job.amount})`)
     setSelectedJob({ ...job, paymentStatus: 'Paid' })
     setFeedback({ tone: 'success', text: `Payment collected for ${job.id} (${job.amount}). You can now release it.` })
+  }
+
+  // Reprints (always a COPY; provisional until fully paid) built from the order.
+  const reprintReceipt = async (job: OrderRecord & WithDocId) => {
+    const qr = await trackQrDataUrl(job.id)
+    printReceipt(buildOrderReceipt(job, business, logoUrl, qr, true))
+    logActivity(`${job.id}: receipt reprinted`)
+  }
+  const reprintClaim = async (job: OrderRecord & WithDocId) => {
+    const qr = await trackQrDataUrl(job.id)
+    printReceipt(buildOrderClaimStub(job, business, logoUrl, qr, true))
+    logActivity(`${job.id}: claim stub reprinted`)
+  }
+
+  // Open the scannable tracking code for a card's barcode icon.
+  const showCode = async (job: OrderRecord & WithDocId) => {
+    const url = trackUrl(job.id)
+    setCodeJob({ job, url })
+    const qr = await trackQrDataUrl(job.id)
+    setCodeJob((current) => (current && current.job.id === job.id ? { ...current, qr } : current))
+  }
+  const copyCodeLink = (url: string) => {
+    void navigator.clipboard?.writeText(url).then(
+      () => setFeedback({ tone: 'success', text: 'Tracking link copied.' }),
+      () => setFeedback({ tone: 'error', text: 'Could not copy the link.' }),
+    )
   }
 
   // Release an unpaid order — it's claimed but its balance stays outstanding.
@@ -370,13 +417,13 @@ export function ProductionBoardPage() {
               </button>
             </div>
             <div className="flex flex-wrap gap-2">
-              {filters.map((filter) => (
+              {stageFilters.map((filter) => (
                 <button
                   key={filter}
                   type="button"
-                  onClick={() => setActiveFilter(filter)}
+                  onClick={() => setStageFilter(filter)}
                   className={`rounded-full px-3 py-1.5 text-sm font-semibold transition ${
-                    activeFilter === filter ? 'bg-blue-600 text-white' : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
+                    stageFilter === filter ? 'bg-blue-600 text-white' : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
                   }`}
                 >
                   {filter}
@@ -384,6 +431,39 @@ export function ProductionBoardPage() {
               ))}
             </div>
           </div>
+        </div>
+
+        {/* Detail filters — service, load type, priority, additional option. */}
+        <div className="mt-4 grid gap-3 border-t border-slate-100 pt-4 sm:grid-cols-2 xl:grid-cols-4">
+          <label className="space-y-1">
+            <span className="text-xs font-semibold text-slate-500">Service</span>
+            <select value={serviceFilter} onChange={(e) => setServiceFilter(e.target.value)} className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm outline-none focus:border-blue-400">
+              <option value="All">All services</option>
+              {pricing.services.map((s) => <option key={s.name} value={s.name}>{s.name}</option>)}
+            </select>
+          </label>
+          <label className="space-y-1">
+            <span className="text-xs font-semibold text-slate-500">Load type</span>
+            <select value={loadTypeFilter} onChange={(e) => setLoadTypeFilter(e.target.value)} className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm outline-none focus:border-blue-400">
+              <option value="All">All load types</option>
+              {pricing.loadTypes.map((t) => <option key={t.name} value={t.name}>{t.name}</option>)}
+            </select>
+          </label>
+          <label className="space-y-1">
+            <span className="text-xs font-semibold text-slate-500">Priority</span>
+            <select value={priorityFilter} onChange={(e) => setPriorityFilter(e.target.value)} className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm outline-none focus:border-blue-400">
+              <option value="All">All priorities</option>
+              <option value="Express">Express</option>
+              <option value="Normal">Normal</option>
+            </select>
+          </label>
+          <label className="space-y-1">
+            <span className="text-xs font-semibold text-slate-500">Additional option</span>
+            <select value={addOnFilter} onChange={(e) => setAddOnFilter(e.target.value)} className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm outline-none focus:border-blue-400">
+              <option value="All">Any option</option>
+              {pricing.addOns.map((a) => <option key={a.name} value={a.name}>{a.name}</option>)}
+            </select>
+          </label>
         </div>
       </div>
 
@@ -421,7 +501,7 @@ export function ProductionBoardPage() {
                   onClick={() => setSelectedJob(job)}
                   className="cursor-grab active:cursor-grabbing"
                 >
-                  <ProductionCard job={job} />
+                  <ProductionCard job={job} onShowCode={() => showCode(job)} />
                 </div>
               ))}
             </ProductionColumn>
@@ -443,7 +523,35 @@ export function ProductionBoardPage() {
         onPay={handlePay}
         onReleaseUnpaid={handleReleaseUnpaid}
         onReassign={reassignMachine}
+        onReprintReceipt={reprintReceipt}
+        onReprintClaim={reprintClaim}
       />
+
+      {/* Scannable tracking code popover for a card's barcode icon. */}
+      {codeJob ? (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/60 px-4 backdrop-blur-sm" onClick={() => setCodeJob(null)}>
+          <div className="w-full max-w-xs rounded-3xl border border-slate-200 bg-white p-6 text-center shadow-2xl" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between">
+              <h3 className="text-lg font-semibold text-slate-900">Track {codeJob.job.id}</h3>
+              <button onClick={() => setCodeJob(null)} className="rounded-xl border border-slate-200 p-2 text-slate-600 transition hover:bg-slate-100"><FaTimes /></button>
+            </div>
+            {codeJob.qr ? (
+              <img src={codeJob.qr} alt="Tracking QR code" className="mx-auto mt-4 h-52 w-52" />
+            ) : (
+              <div className="mx-auto mt-4 flex h-52 w-52 items-center justify-center text-sm text-slate-400">Generating…</div>
+            )}
+            <p className="mt-3 break-all text-xs text-slate-500">{codeJob.url}</p>
+            <div className="mt-4 grid gap-2">
+              <button onClick={() => copyCodeLink(codeJob.url)} className="flex items-center justify-center gap-2 rounded-2xl bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-blue-700">
+                <FaCopy /> Copy link
+              </button>
+              <a href={codeJob.url} target="_blank" rel="noreferrer" className="flex items-center justify-center gap-2 rounded-2xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 transition hover:bg-slate-50">
+                <FaExternalLinkAlt /> Open in new tab
+              </a>
+            </div>
+          </div>
+        </div>
+      ) : null}
 
       <RevertStageModal
         isOpen={Boolean(pendingRevert)}

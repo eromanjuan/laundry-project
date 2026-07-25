@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { FaTimes, FaTshirt, FaCheckCircle, FaBoxOpen, FaPlay, FaMoneyBillWave, FaSave, FaWind } from 'react-icons/fa'
+import { FaTimes, FaTshirt, FaCheckCircle, FaBoxOpen, FaPlay, FaMoneyBillWave, FaSave, FaWind, FaPrint, FaQrcode } from 'react-icons/fa'
 import type { OrderRecord } from '../data/seeds'
 import type { WithDocId } from '../hooks/useCollection'
 
@@ -30,6 +30,10 @@ interface OrderDetailsModalProps {
   onReleaseUnpaid: (order: OrderRecord & WithDocId) => void
   /** Move this order to a different machine (washer while washing, dryer while drying). */
   onReassign: (order: OrderRecord & WithDocId, machineName: string) => void
+  /** Reprint the customer receipt (a COPY). */
+  onReprintReceipt: (order: OrderRecord & WithDocId) => void
+  /** Reprint the claim stub (the scannable barcode). */
+  onReprintClaim: (order: OrderRecord & WithDocId) => void
 }
 
 function Row({ label, value }: { label: string; value: string }) {
@@ -41,7 +45,7 @@ function Row({ label, value }: { label: string; value: string }) {
   )
 }
 
-export function OrderDetailsModal({ order, machineAvailable, dryerAvailable, washerOptions, dryerOptions, onClose, onStart, onDry, onReady, onClaim, onPay, onReleaseUnpaid, onReassign }: OrderDetailsModalProps) {
+export function OrderDetailsModal({ order, machineAvailable, dryerAvailable, washerOptions, dryerOptions, onClose, onStart, onDry, onReady, onClaim, onPay, onReleaseUnpaid, onReassign, onReprintReceipt, onReprintClaim }: OrderDetailsModalProps) {
   // Staged machine pick — only applied when the user hits Save.
   const [pendingMachine, setPendingMachine] = useState('')
   // Reset the staged pick whenever a different order opens in the modal.
@@ -217,6 +221,29 @@ export function OrderDetailsModal({ order, machineAvailable, dryerAvailable, was
             <div className="flex items-center justify-center gap-2 rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-semibold text-emerald-700">
               <FaCheckCircle /> Completed & released
             </div>
+          ) : null}
+        </div>
+
+        {/* Reprints — receipt is a COPY (official once fully paid); claim stub is
+            the scannable barcode. */}
+        <div className="mt-4 border-t border-slate-100 pt-4">
+          <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-400">Reprint</p>
+          <div className="grid gap-2 sm:grid-cols-2">
+            <button
+              onClick={() => onReprintReceipt(order)}
+              className="flex items-center justify-center gap-2 rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
+            >
+              <FaPrint /> Reprint Receipt
+            </button>
+            <button
+              onClick={() => onReprintClaim(order)}
+              className="flex items-center justify-center gap-2 rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
+            >
+              <FaQrcode /> Reprint Claim Stub
+            </button>
+          </div>
+          {!isPaid ? (
+            <p className="mt-2 text-center text-xs text-amber-600">Not fully paid — the receipt prints as PROVISIONAL until the balance is settled.</p>
           ) : null}
         </div>
       </div>

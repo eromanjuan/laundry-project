@@ -8,6 +8,8 @@ import { useBusiness } from '../hooks/useBusiness'
 import { useLgConnection } from '../hooks/useLgConnection'
 import { useLgStatus, syncLgNow } from '../hooks/useLgStatus'
 import { backupDatabase, restoreDatabase } from '../lib/backup'
+import { printReceipt, setPaperSize } from '../lib/printReceipt'
+import { nowStamp } from '../data/seeds'
 import { downloadJson } from '../lib/exports'
 import type { PriceItem } from '../data/pricing'
 
@@ -355,6 +357,33 @@ export function SettingsPage() {
 
   const updateSetting = <K extends keyof SettingsState>(key: K, value: SettingsState[K]) => {
     setSettings((current) => ({ ...current, [key]: value }))
+    // The paper size actually drives how receipts print.
+    if (key === 'paperSize') setPaperSize(value as '58mm' | '80mm')
+  }
+
+  // Keep the print engine's paper width in sync with the saved setting.
+  useEffect(() => setPaperSize(settings.paperSize), [settings.paperSize])
+
+  /** Print a real sample receipt through the browser's printer (not a demo). */
+  const handleTestPrint = () => {
+    printReceipt({
+      logoUrl,
+      businessName: business.name,
+      tagline: [business.address, business.contact].filter(Boolean).join(' • ') || 'Printer test',
+      docType: 'PRINTER TEST',
+      jobNumber: 'TEST',
+      customer: settings.printerName || 'Test Printer',
+      datetime: nowStamp(),
+      printedAt: nowStamp(),
+      meta: [
+        { label: 'Printer', value: settings.printerName },
+        { label: 'Type', value: settings.printerType },
+        { label: 'Paper', value: settings.paperSize },
+      ],
+      totals: [{ label: 'Sample Total', value: '₱000.00' }],
+      footer: 'If you can read this, printing works! Select your thermal printer in the print dialog.',
+    })
+    setTestPrintStatus('Print dialog opened — choose your printer and print.')
   }
 
   const handleEnableBluetooth = () => {
@@ -830,7 +859,7 @@ export function SettingsPage() {
                     <p className="mt-1">Status: {testPrintStatus}</p>
                   </div>
                   <div className="flex flex-wrap gap-2">
-                    <button onClick={() => setTestPrintStatus('Printed successfully')} className="flex items-center gap-2 rounded-2xl bg-blue-600 px-3 py-2 text-sm font-semibold text-white"><FaPrint /> Print Test</button>
+                    <button onClick={handleTestPrint} className="flex items-center gap-2 rounded-2xl bg-blue-600 px-3 py-2 text-sm font-semibold text-white"><FaPrint /> Print Test</button>
                     <button onClick={() => setTestPrintStatus('Ready')} className="rounded-2xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-700">Reset</button>
                   </div>
                 </div>

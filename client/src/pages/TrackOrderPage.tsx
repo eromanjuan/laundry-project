@@ -11,6 +11,8 @@ interface TrackingDoc {
   id: string
   status: string
   updatedAt?: number
+  paymentStatus?: string
+  balance?: string
 }
 
 const STAGES = [
@@ -163,6 +165,44 @@ export function TrackOrderPage() {
               )}
             </div>
 
+            {/* Outstanding balance, if the order isn't fully paid. */}
+            {record.paymentStatus && record.paymentStatus !== 'Paid' ? (
+              <div className="mt-4 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-center">
+                <p className="text-sm font-semibold text-amber-700">Pending balance{record.balance ? `: ${record.balance}` : ''}</p>
+                <p className="mt-0.5 text-xs text-amber-600">Please settle the balance when you claim your laundry.</p>
+              </div>
+            ) : record.paymentStatus === 'Paid' ? (
+              <p className="mt-4 flex items-center justify-center gap-2 rounded-2xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm font-semibold text-emerald-700">
+                <FaCheckCircle /> Fully paid
+              </p>
+            ) : null}
+
+            {/* Prominent notify prompt — the customer's one tap grants permission
+                (browsers require a gesture; auto-asking is blocked/penalised). */}
+            {notify === 'default' ? (
+              <div className="mt-4 rounded-2xl border border-blue-200 bg-gradient-to-br from-blue-600 to-blue-700 p-4 text-center text-white shadow-lg shadow-blue-200/60">
+                <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-white/20">
+                  <FaBell className="animate-pulse text-xl" />
+                </div>
+                <p className="mt-3 text-base font-semibold">Get notified on your phone</p>
+                <p className="mt-1 text-sm text-blue-50/90">We'll alert you the moment your laundry moves to the next stage — no need to keep checking.</p>
+                <button
+                  onClick={enableNotifications}
+                  className="mt-4 w-full rounded-2xl bg-white px-4 py-3 text-sm font-bold text-blue-700 transition hover:bg-blue-50"
+                >
+                  Turn on notifications
+                </button>
+              </div>
+            ) : notify === 'granted' ? (
+              <p className="mt-4 flex items-center justify-center gap-2 rounded-2xl border border-emerald-200 bg-emerald-50 px-3 py-2.5 text-sm font-semibold text-emerald-700">
+                <FaBell /> You're all set — we'll notify you on every update.
+              </p>
+            ) : notify === 'denied' ? (
+              <p className="mt-4 flex items-center justify-center gap-2 rounded-2xl border border-amber-200 bg-amber-50 px-3 py-2.5 text-xs font-semibold text-amber-700">
+                <FaBellSlash /> Notifications are blocked. Enable them for this site in your browser settings to get updates.
+              </p>
+            ) : null}
+
             {/* Stage progress */}
             <ol className="mt-6 space-y-3">
               {STAGES.map((stage, index) => {
@@ -188,25 +228,6 @@ export function TrackOrderPage() {
                 )
               })}
             </ol>
-
-            {/* Notify-me — while this page stays open we raise a phone notification
-                on every status change. */}
-            {notify === 'granted' ? (
-              <p className="mt-6 flex items-center justify-center gap-2 rounded-2xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs font-semibold text-emerald-700">
-                <FaBell /> Notifications on — we'll alert you whenever your laundry updates.
-              </p>
-            ) : notify === 'default' ? (
-              <button
-                onClick={enableNotifications}
-                className="mt-6 flex w-full items-center justify-center gap-2 rounded-2xl bg-blue-600 px-4 py-3 text-sm font-semibold text-white transition hover:bg-blue-700"
-              >
-                <FaBell /> Notify me when my laundry updates
-              </button>
-            ) : notify === 'denied' ? (
-              <p className="mt-6 flex items-center justify-center gap-2 rounded-2xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs font-semibold text-slate-500">
-                <FaBellSlash /> Notifications are blocked — enable them in your browser settings.
-              </p>
-            ) : null}
 
             {record.updatedAt ? (
               <p className="mt-4 text-center text-xs text-slate-400">

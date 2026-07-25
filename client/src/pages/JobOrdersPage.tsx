@@ -13,7 +13,7 @@ import { useBusiness } from '../hooks/useBusiness'
 import { useAuth } from '../context/AuthContext'
 import { loadsForWeight } from '../data/pricing'
 import { nextId, todayISO, nowStamp, seedActivity, seedCustomers, seedOrders, type ActivityRecord, type CustomerRecord, type OrderRecord } from '../data/seeds'
-import { printReceipt, printReceipts, type ReceiptData, type ReceiptItem, type ReceiptLine } from '../lib/printReceipt'
+import { printReceipt, printReceipts, receiptDocType, type ReceiptData, type ReceiptItem, type ReceiptLine } from '../lib/printReceipt'
 import { trackUrl, publishStatus } from '../lib/tracking'
 
 const paymentMethods = ['Cash', 'GCash', 'Bank Transfer', 'Partial Payment']
@@ -212,14 +212,17 @@ export function JobOrdersPage() {
     return lines
   }
 
-  const buildReceiptData = (qr?: string): ReceiptData => ({
+  // `copy=false` is the single OFFICIAL receipt printed at save; every later
+  // print is a COPY. Unpaid orders are always PROVISIONAL until fully paid.
+  const buildReceiptData = (qr?: string, copy = false): ReceiptData => ({
     logoUrl,
     businessName: business.name,
     tagline: [business.address, business.contact].filter(Boolean).join(' • ') || 'Cleaner care, better living',
-    docType: isFullyPaid ? 'OFFICIAL RECEIPT — PAID' : 'PROVISIONAL RECEIPT — UNPAID',
+    docType: receiptDocType(isFullyPaid, copy),
     jobNumber: nextJobNumber,
     customer: activeCustomer?.name ?? 'Walk-in Customer',
     datetime: nowStamp(),
+    printedAt: nowStamp(),
     meta: [
       { label: 'Items', value: String(items.length) },
       { label: 'Total Weight', value: `${totalKg} kg` },
@@ -233,14 +236,15 @@ export function JobOrdersPage() {
     qrDataUrl: qr,
   })
 
-  const buildClaimStubData = (qr?: string): ReceiptData => ({
+  const buildClaimStubData = (qr?: string, copy = false): ReceiptData => ({
     logoUrl,
     businessName: business.name,
     tagline: [business.address, business.contact].filter(Boolean).join(' • ') || 'Cleaner care, better living',
-    docType: 'CLAIM STUB',
+    docType: copy ? 'CLAIM STUB (COPY)' : 'CLAIM STUB',
     jobNumber: nextJobNumber,
     customer: activeCustomer?.name ?? 'Walk-in Customer',
     datetime: nowStamp(),
+    printedAt: nowStamp(),
     meta: [
       { label: 'Details', value: orderServiceLabel || '—' },
       { label: 'Total Weight', value: `${totalKg} kg` },
@@ -256,8 +260,9 @@ export function JobOrdersPage() {
   const makeTrackQr = () =>
     QRCode.toDataURL(trackUrl(nextJobNumber), { width: 220, margin: 1 }).catch(() => undefined)
 
-  const handlePrintReceipt = async () => printReceipt(buildReceiptData(await makeTrackQr()))
-  const handlePrintClaimStub = async () => printReceipt(buildClaimStubData(await makeTrackQr()))
+  // Manual buttons on the entry screen are reprints → COPY.
+  const handlePrintReceipt = async () => printReceipt(buildReceiptData(await makeTrackQr(), true))
+  const handlePrintClaimStub = async () => printReceipt(buildClaimStubData(await makeTrackQr(), true))
 
   const handleGenerateQr = async () => {
     try {
@@ -312,10 +317,15 @@ export function JobOrdersPage() {
       amount: peso(grandTotal),
       date: todayISO(),
       extras: extrasSummary || '',
+      addOns: options.join(', '),
     })
 
-    // Publish the initial status so the receipt QR resolves immediately.
-    void publishStatus(nextJobNumber, 'Pending')
+    // Publish the initial status + payment so the tracking QR resolves immediately
+    // and shows any pending balance.
+    void publishStatus(nextJobNumber, 'Pending', {
+      paymentStatus: fullyPaid ? 'Paid' : 'Pending',
+      balance: fullyPaid ? '₱0' : peso(grandTotal),
+    })
 
     void addActivity({
       id: `${Date.now()}-${Math.round(Math.random() * 1e6)}`,
