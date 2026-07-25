@@ -3,6 +3,7 @@ import { useParams } from 'react-router-dom'
 import { doc, onSnapshot } from 'firebase/firestore'
 import { FaTshirt, FaWind, FaBoxOpen, FaCheckCircle, FaClock, FaHourglassHalf, FaBell, FaBellSlash } from 'react-icons/fa'
 import { db, isFirebaseConfigured } from '../lib/firebase'
+import { subscribeToPush } from '../lib/push'
 
 /** Public, sign-in-free laundry status page reached by scanning a receipt QR. */
 
@@ -70,7 +71,21 @@ export function TrackOrderPage() {
     if (!notifySupported) return
     const result = await Notification.requestPermission()
     setNotify(result as NotifyState)
+    if (result === 'granted') {
+      // Subscribe to background push so updates arrive even when the tab is closed.
+      await subscribeToPush(id, lastStatus.current ?? '')
+    }
   }
+
+  // Returning visitor who already granted permission → (re)subscribe this order
+  // for background push once its status is known.
+  useEffect(() => {
+    if (notify === 'granted' && state === 'ready' && record) {
+      void subscribeToPush(id, record.status)
+    }
+    // Only needs to run when the order first resolves.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [state, notify])
 
   useEffect(() => {
     if (!isFirebaseConfigured || !db) {
@@ -178,7 +193,7 @@ export function TrackOrderPage() {
                 on every status change. */}
             {notify === 'granted' ? (
               <p className="mt-6 flex items-center justify-center gap-2 rounded-2xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs font-semibold text-emerald-700">
-                <FaBell /> Notifications on — keep this page open to get updates.
+                <FaBell /> Notifications on — we'll alert you whenever your laundry updates.
               </p>
             ) : notify === 'default' ? (
               <button

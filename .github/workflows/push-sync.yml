@@ -1,0 +1,36 @@
+name: Order Push Notifications
+
+# Sends Web Push notifications to customers when their laundry's status changes.
+# Reads/writes Firestore with a service-account key (same Spark-plan setup as
+# lg-sync — no Firebase Blaze plan needed).
+
+on:
+  schedule:
+    - cron: '*/5 * * * *' # every 5 minutes (GitHub may delay runs under load)
+  workflow_dispatch: {} # run manually from the Actions tab
+
+# Avoid overlapping runs.
+concurrency:
+  group: push-sync
+  cancel-in-progress: false
+
+jobs:
+  push:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Install dependencies
+        working-directory: push-sync
+        run: npm install --no-audit --no-fund
+      - name: Send status pushes
+        working-directory: push-sync
+        env:
+          FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+          VAPID_PUBLIC_KEY: ${{ secrets.VAPID_PUBLIC_KEY }}
+          VAPID_PRIVATE_KEY: ${{ secrets.VAPID_PRIVATE_KEY }}
+          VAPID_SUBJECT: ${{ secrets.VAPID_SUBJECT }}
+          SITE_URL: https://laundry-project-pos.web.app
+        run: node index.js

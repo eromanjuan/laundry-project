@@ -10,6 +10,28 @@
 self.addEventListener('install', () => self.skipWaiting())
 self.addEventListener('activate', (event) => event.waitUntil(self.clients.claim()))
 
+// Background push from the push-sync GitHub Action — fires even when the tab is
+// closed. Payload: { id, status, body, url }.
+self.addEventListener('push', (event) => {
+  let payload = {}
+  try {
+    payload = event.data ? event.data.json() : {}
+  } catch (err) {
+    payload = {}
+  }
+  const id = payload.id || ''
+  const body = payload.body || `Order ${id}: ${payload.status || 'updated'}`
+  event.waitUntil(
+    self.registration.showNotification('Laundry update', {
+      body,
+      icon: '/brand-logo.png',
+      badge: '/brand-logo.png',
+      tag: `laundry-${id}`,
+      data: { url: payload.url || '/' },
+    }),
+  )
+})
+
 self.addEventListener('notificationclick', (event) => {
   event.notification.close()
   const url = event.notification.data && event.notification.data.url
