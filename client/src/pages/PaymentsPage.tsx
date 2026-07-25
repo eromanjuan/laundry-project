@@ -8,7 +8,9 @@ import { useCollection, type WithDocId } from '../hooks/useCollection'
 import { useAuth } from '../context/AuthContext'
 import { useBranding } from '../hooks/useBranding'
 import { useBusiness } from '../hooks/useBusiness'
+import QRCode from 'qrcode'
 import { printReceipt } from '../lib/printReceipt'
+import { trackUrl } from '../lib/tracking'
 import { seedActivity, seedOrders, todayISO, nowStamp, type ActivityRecord, type OrderRecord } from '../data/seeds'
 
 const filters = ['All', 'Paid', 'Unpaid', 'Today', 'This Week']
@@ -96,10 +98,11 @@ export function PaymentsPage() {
     })
   }
 
-  const handleReceipt = (row: PaymentRow) => {
+  const handleReceipt = async (row: PaymentRow) => {
     const order = orders.find((entry) => entry.id === row.jobNumber)
     if (!order) return
     const paid = order.paymentStatus === 'Paid'
+    const qrDataUrl = await QRCode.toDataURL(trackUrl(order.id), { width: 220, margin: 1 }).catch(() => undefined)
     printReceipt({
       logoUrl,
       businessName: business.name,
@@ -116,6 +119,7 @@ export function PaymentsPage() {
         { label: 'Status', value: order.paymentStatus },
       ],
       footer: paid ? business.footer : 'UNPAID — settle the balance to get your official paid receipt.',
+      qrDataUrl,
     })
   }
 

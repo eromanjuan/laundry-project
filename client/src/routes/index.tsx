@@ -16,6 +16,7 @@ import { MachineMonitoringPage } from '../pages/MachineMonitoringPage'
 import { SettingsPage } from '../pages/SettingsPage'
 import { LoginPage } from '../pages/LoginPage'
 import { UserManagementPage } from '../pages/UserManagementPage'
+import { TrackOrderPage } from '../pages/TrackOrderPage'
 
 export const router = createBrowserRouter([
   {
@@ -28,6 +29,11 @@ export const router = createBrowserRouter([
   {
     path: '/login',
     element: <LoginPage />,
+  },
+  {
+    // Public, sign-in-free order tracking reached by scanning a receipt QR.
+    path: '/track/:id',
+    element: <TrackOrderPage />,
   },
   {
     path: '/dashboard',

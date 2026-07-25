@@ -11,6 +11,7 @@ import { useLgStatus } from '../hooks/useLgStatus'
 import { useAuth } from '../context/AuthContext'
 import { seedActivity, seedMachines, seedOrders, todayISO, nowStamp, type ActivityRecord, type MachineRecord, type OrderRecord } from '../data/seeds'
 import { findFreeWasher, findFreeDryer, oldestPending } from '../lib/machines'
+import { publishStatus } from '../lib/tracking'
 
 const statuses = ['Pending', 'Washing', 'Drying', 'Ready', 'Claimed']
 const filters = ['All', 'Express', 'Full Service', 'Self Service', 'Commercial', 'Ready Today']
@@ -159,6 +160,7 @@ export function ProductionBoardPage() {
     if (nextPending) {
       void updateMachine(washer, { status: 'Busy', orderId: nextPending.id, cycles: (washer.cycles || 0) + 1 })
       void update(nextPending, { status: 'Washing', assigned: washer.name, startedAt: nowStamp() })
+      void publishStatus(nextPending.id, 'Washing')
     } else {
       void updateMachine(washer, { status: 'Available', orderId: '' })
     }
@@ -252,6 +254,7 @@ export function ProductionBoardPage() {
       setFeedback({ tone: 'error', text: error })
     } else {
       logActivity(`${job.id}: ${from} → ${target}`)
+      void publishStatus(job.id, target)
       setFeedback(null)
       if (closeModal) setSelectedJob(null)
     }
@@ -267,6 +270,7 @@ export function ProductionBoardPage() {
     const error = moveOrder(job, target)
     if (error) return error
     logActivity(`${job.id}: reverted ${from} → ${target} — reason: ${reason}`)
+    void publishStatus(job.id, target)
     setFeedback({ tone: 'success', text: `${job.id} moved back to ${target}. The reason has been logged.` })
     setPendingRevert(null)
     if (closeModal) setSelectedJob(null)
@@ -292,6 +296,7 @@ export function ProductionBoardPage() {
   // Release an unpaid order — it's claimed but its balance stays outstanding.
   const handleReleaseUnpaid = (job: OrderRecord & WithDocId) => {
     void update(job, { status: 'Claimed', releasedAt: nowStamp() })
+    void publishStatus(job.id, 'Claimed')
     logActivity(`${job.id}: released UNPAID (balance ${job.amount})`)
     setSelectedJob(null)
     setFeedback({ tone: 'success', text: `${job.id} released with an outstanding balance of ${job.amount}. Collect it anytime from Claim Laundry.` })

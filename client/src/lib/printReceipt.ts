@@ -25,6 +25,8 @@ export interface ReceiptData {
   items?: ReceiptItem[]
   totals?: ReceiptLine[]
   footer?: string
+  /** Data-URL QR image the customer can scan to track their order status. */
+  qrDataUrl?: string
 }
 
 function escapeHtml(value: string) {
@@ -58,6 +60,7 @@ function buildBody(data: ReceiptData) {
     </table>
     ${items ? `<div class="hr"></div><table>${items}</table>` : ''}
     ${totals ? `<div class="hr"></div><table>${totals}</table>` : ''}
+    ${data.qrDataUrl ? `<div class="hr"></div><img class="qr" src="${data.qrDataUrl}" alt="Scan to track your order" /><div class="center muted b">Scan to track your laundry</div>` : ''}
     <div class="hr"></div>
     <div class="center muted">${escapeHtml(data.footer ?? 'Thank you! Please keep this receipt.')}</div>
   `
@@ -90,6 +93,7 @@ export function printReceipts(list: ReceiptData[]) {
     .muted { color: #222; font-size: 11px; }
     .title { font-weight: bold; font-size: 15px; letter-spacing: 1px; }
     .logo { display: block; margin: 0 auto 4px; width: 24mm; height: auto; }
+    .qr { display: block; margin: 4px auto 2px; width: 28mm; height: auto; }
     .hr { border-top: 1px dashed #000; margin: 5px 0; }
     .cut { text-align: center; color: #000; margin: 10px 0; font-size: 10px; }
     table { width: 100%; border-collapse: collapse; }

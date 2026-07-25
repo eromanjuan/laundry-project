@@ -16,6 +16,14 @@ service cloud.firestore {
       allow write: if request.auth != null;
     }
 
+    // Public order tracking — only { id, status, updatedAt } (no PII). Read by
+    // customers scanning the QR on their receipt; written by the Cloud Function
+    // (admin SDK) and, defensively, only by signed-in staff.
+    match /tracking/{id} {
+      allow read: if true;
+      allow write: if request.auth != null;
+    }
+
     // Everything else (customers, orders, payments, users, etc.):
     // signed-in users only. This closes the public read/write hole.
     match /{document=**} {

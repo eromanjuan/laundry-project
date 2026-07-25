@@ -6,7 +6,9 @@ import { useCollection, type WithDocId } from '../hooks/useCollection'
 import { useAuth } from '../context/AuthContext'
 import { useBranding } from '../hooks/useBranding'
 import { useBusiness } from '../hooks/useBusiness'
+import QRCode from 'qrcode'
 import { printReceipt } from '../lib/printReceipt'
+import { publishStatus, trackUrl } from '../lib/tracking'
 import { seedActivity, seedCustomers, seedOrders, nowStamp, type ActivityRecord, type CustomerRecord, type OrderRecord } from '../data/seeds'
 
 const filters = ['All', 'Ready', 'Unpaid', 'Released', 'In Process']
@@ -162,13 +164,15 @@ export function ClaimLaundryPage() {
   const handleRelease = (order: OrderRecord & WithDocId) => {
     if (order.status !== 'Ready' || order.paymentStatus !== 'Paid') return
     void update(order, { status: 'Claimed', releasedAt: nowStamp() })
+    void publishStatus(order.id, 'Claimed')
     logActivity(`${order.id}: released to customer`)
     setSelected(null)
     setFeedback({ tone: 'success', text: `${order.id} released to customer.` })
   }
 
-  const handlePrint = (order: OrderRecord & WithDocId) => {
+  const handlePrint = async (order: OrderRecord & WithDocId) => {
     const paid = order.paymentStatus === 'Paid'
+    const qrDataUrl = await QRCode.toDataURL(trackUrl(order.id), { width: 220, margin: 1 }).catch(() => undefined)
     printReceipt({
       logoUrl,
       businessName: business.name,
@@ -189,6 +193,7 @@ export function ClaimLaundryPage() {
         { label: 'Status', value: order.paymentStatus },
       ],
       footer: paid ? business.footer : 'UNPAID — settle the balance to get your official paid receipt.',
+      qrDataUrl,
     })
   }
 

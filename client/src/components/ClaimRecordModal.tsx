@@ -29,8 +29,8 @@ export function ClaimRecordModal({ order, mobile, onClose, onSettle, onRelease, 
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/60 px-4 backdrop-blur-sm">
-      <div className="max-h-[85vh] w-full max-w-lg overflow-y-auto rounded-3xl border border-slate-200 bg-white p-6 shadow-2xl">
-        <div className="flex items-start justify-between gap-3">
+      <div className="flex max-h-[85vh] w-full max-w-lg flex-col overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-2xl">
+        <div className="sticky top-0 z-10 flex items-start justify-between gap-3 border-b border-slate-100 bg-white/95 px-6 py-4 backdrop-blur">
           <div>
             <h3 className="text-xl font-semibold text-slate-900">Job Order {order.id}</h3>
             <p className="mt-1 text-sm text-slate-500">{order.customer} • {order.service}</p>
@@ -40,7 +40,8 @@ export function ClaimRecordModal({ order, mobile, onClose, onSettle, onRelease, 
           </button>
         </div>
 
-        <div className="mt-5 grid gap-2 sm:grid-cols-2">
+        <div className="min-h-0 flex-1 overflow-y-auto px-6 pb-6 pt-5">
+        <div className="grid gap-2 sm:grid-cols-2">
           <Row label="Customer" value={order.customer} />
           <Row label="Mobile" value={mobile || '—'} />
           <Row label="Service" value={order.service} />
@@ -90,6 +91,7 @@ export function ClaimRecordModal({ order, mobile, onClose, onSettle, onRelease, 
           >
             <FaPrint /> Print Receipt
           </button>
+        </div>
         </div>
       </div>
     </div>

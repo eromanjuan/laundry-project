@@ -14,6 +14,7 @@ import { useAuth } from '../context/AuthContext'
 import { loadsForWeight } from '../data/pricing'
 import { nextId, todayISO, nowStamp, seedActivity, seedCustomers, seedOrders, type ActivityRecord, type CustomerRecord, type OrderRecord } from '../data/seeds'
 import { printReceipt, printReceipts, type ReceiptData, type ReceiptItem, type ReceiptLine } from '../lib/printReceipt'
+import { trackUrl, publishStatus } from '../lib/tracking'
 
 const paymentMethods = ['Cash', 'GCash', 'Bank Transfer', 'Partial Payment']
 
@@ -211,7 +212,7 @@ export function JobOrdersPage() {
     return lines
   }
 
-  const buildReceiptData = (): ReceiptData => ({
+  const buildReceiptData = (qr?: string): ReceiptData => ({
     logoUrl,
     businessName: business.name,
     tagline: [business.address, business.contact].filter(Boolean).join(' • ') || 'Cleaner care, better living',
@@ -229,9 +230,10 @@ export function JobOrdersPage() {
     items: receiptItems(),
     totals: receiptTotals(),
     footer: isFullyPaid ? business.footer : 'UNPAID — settle the balance to get your official paid receipt.',
+    qrDataUrl: qr,
   })
 
-  const buildClaimStubData = (): ReceiptData => ({
+  const buildClaimStubData = (qr?: string): ReceiptData => ({
     logoUrl,
     businessName: business.name,
     tagline: [business.address, business.contact].filter(Boolean).join(' • ') || 'Cleaner care, better living',
@@ -247,14 +249,19 @@ export function JobOrdersPage() {
       { label: 'Payment', value: isFullyPaid ? 'PAID' : 'UNPAID' },
     ],
     footer: 'Present this stub to claim your laundry.',
+    qrDataUrl: qr,
   })
 
-  const handlePrintReceipt = () => printReceipt(buildReceiptData())
-  const handlePrintClaimStub = () => printReceipt(buildClaimStubData())
+  /** QR (data URL) that points at the public /track page for this job. */
+  const makeTrackQr = () =>
+    QRCode.toDataURL(trackUrl(nextJobNumber), { width: 220, margin: 1 }).catch(() => undefined)
+
+  const handlePrintReceipt = async () => printReceipt(buildReceiptData(await makeTrackQr()))
+  const handlePrintClaimStub = async () => printReceipt(buildClaimStubData(await makeTrackQr()))
 
   const handleGenerateQr = async () => {
     try {
-      const url = await QRCode.toDataURL(`${nextJobNumber} | ${activeCustomer?.name ?? 'Walk-in'} | ${peso(grandTotal)}`, { width: 260, margin: 1 })
+      const url = await QRCode.toDataURL(trackUrl(nextJobNumber), { width: 260, margin: 1 })
       setQrDataUrl(url)
     } catch {
       setFeedback({ tone: 'error', text: 'Could not generate QR code.' })
@@ -275,7 +282,7 @@ export function JobOrdersPage() {
     setShowConfirm(true)
   }
 
-  const handleSaveOrder = () => {
+  const handleSaveOrder = async () => {
     setShowConfirm(false)
     if (!activeCustomer) {
       setFeedback({ tone: 'error', text: 'Select an existing customer, choose Walk-in, or add a new customer first.' })
@@ -307,6 +314,9 @@ export function JobOrdersPage() {
       extras: extrasSummary || '',
     })
 
+    // Publish the initial status so the receipt QR resolves immediately.
+    void publishStatus(nextJobNumber, 'Pending')
+
     void addActivity({
       id: `${Date.now()}-${Math.round(Math.random() * 1e6)}`,
       action: `${nextJobNumber}: job order received (Pending) — ${activeCustomer.name}, ${items.length} item(s), ${peso(grandTotal)}`,
@@ -324,7 +334,8 @@ export function JobOrdersPage() {
 
     setFeedback({ tone: 'success', text: `Job order ${nextJobNumber} saved for ${activeCustomer.name} — ${peso(grandTotal)}, queued as Pending. Start washing from the Production Board.${earnedNote}` })
 
-    printReceipts([buildReceiptData(), buildClaimStubData()])
+    const trackQr = await makeTrackQr()
+    printReceipts([buildReceiptData(trackQr), buildClaimStubData(trackQr)])
 
     setItems([newItem()])
     setOptions([])
