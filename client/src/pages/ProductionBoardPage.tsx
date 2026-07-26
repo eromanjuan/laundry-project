@@ -307,11 +307,12 @@ export function ProductionBoardPage() {
 
   // Settle the balance so the order can be released. Keeps the modal open, updated.
   const handlePay = (job: OrderRecord & WithDocId) => {
-    void update(job, { paymentStatus: 'Paid' })
+    const due = job.balance ?? job.amount
+    void update(job, { paymentStatus: 'Paid', amountPaid: job.amount, balance: '₱0' })
     void publishStatus(job.id, job.status, { paymentStatus: 'Paid', balance: '₱0' })
-    logActivity(`${job.id}: payment collected (${job.amount})`)
-    setSelectedJob({ ...job, paymentStatus: 'Paid' })
-    setFeedback({ tone: 'success', text: `Payment collected for ${job.id} (${job.amount}). You can now release it.` })
+    logActivity(`${job.id}: balance collected (${due})`)
+    setSelectedJob({ ...job, paymentStatus: 'Paid', amountPaid: job.amount, balance: '₱0' })
+    setFeedback({ tone: 'success', text: `Balance collected for ${job.id} (${due}). You can now release it.` })
   }
 
   // Reprints (always a COPY; provisional until fully paid) built from the order.

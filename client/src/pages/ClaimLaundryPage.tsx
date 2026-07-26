@@ -155,9 +155,10 @@ export function ClaimLaundryPage() {
   }
 
   const handleSettle = (order: OrderRecord & WithDocId) => {
-    void update(order, { paymentStatus: 'Paid' })
+    const due = order.balance ?? order.amount
+    void update(order, { paymentStatus: 'Paid', amountPaid: order.amount, balance: '₱0' })
     void publishStatus(order.id, order.status, { paymentStatus: 'Paid', balance: '₱0' })
-    logActivity(`${order.id}: payment settled (${order.amount})`)
+    logActivity(`${order.id}: balance settled (${due})`)
     setSelected({ ...order, paymentStatus: 'Paid' })
     setFeedback({ tone: 'success', text: `Payment settled for ${order.id}. You can now release it.` })
   }

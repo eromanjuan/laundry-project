@@ -298,7 +298,11 @@ export function JobOrdersPage() {
       return
     }
 
-    const fullyPaid = received >= grandTotal && grandTotal > 0
+    // Record the actual amount tendered so a partial payment persists.
+    const paidNum = Math.min(Math.max(received, 0), grandTotal)
+    const balanceNum = Math.max(0, grandTotal - paidNum)
+    const fullyPaid = balanceNum <= 0 && grandTotal > 0
+    const payStatus = fullyPaid ? 'Paid' : paidNum > 0 ? 'Partial' : 'Pending'
 
     void addOrder({
       id: nextJobNumber,
@@ -311,7 +315,9 @@ export function JobOrdersPage() {
       timeReceived: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
       estimatedRelease: '—',
       priority: priority === 'Express' ? 'Express' : 'Normal',
-      paymentStatus: fullyPaid ? 'Paid' : 'Pending',
+      paymentStatus: payStatus,
+      amountPaid: peso(paidNum),
+      balance: peso(balanceNum),
       status: 'Pending',
       category: priority === 'Express' ? 'Express' : 'Full Service',
       amount: peso(grandTotal),
@@ -321,10 +327,10 @@ export function JobOrdersPage() {
     })
 
     // Publish the initial status + payment so the tracking QR resolves immediately
-    // and shows any pending balance.
+    // and shows the real outstanding balance.
     void publishStatus(nextJobNumber, 'Pending', {
-      paymentStatus: fullyPaid ? 'Paid' : 'Pending',
-      balance: fullyPaid ? '₱0' : peso(grandTotal),
+      paymentStatus: payStatus,
+      balance: peso(balanceNum),
     })
 
     void addActivity({

@@ -52,7 +52,8 @@ export function ClaimRecordModal({ order, mobile, onClose, onSettle, onRelease, 
           <Row label="Released" value={order.releasedAt ?? '—'} />
           <Row label="Total Amount" value={order.amount} />
           <Row label="Payment" value={order.paymentStatus} />
-          <Row label="Balance" value={paid ? '₱0' : order.amount} />
+          <Row label="Paid" value={order.amountPaid ?? (paid ? order.amount : '₱0')} />
+          <Row label="Balance" value={order.balance ?? (paid ? '₱0' : order.amount)} />
           <Row label="Claim Status" value={claimStatus} />
         </div>
 
@@ -62,7 +63,7 @@ export function ClaimRecordModal({ order, mobile, onClose, onSettle, onRelease, 
               onClick={() => onSettle(order)}
               className="flex w-full items-center justify-center gap-2 rounded-2xl bg-slate-900 px-4 py-3 text-sm font-semibold text-white transition hover:bg-slate-800"
             >
-              <FaMoneyBillWave /> Settle Payment ({order.amount})
+              <FaMoneyBillWave /> Settle Balance ({order.balance ?? order.amount})
             </button>
           ) : (
             <div className="flex items-center justify-center gap-2 rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-2.5 text-sm font-semibold text-emerald-700">

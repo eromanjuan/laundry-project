@@ -79,7 +79,12 @@ export interface OrderRecord {
   timeReceived: string
   estimatedRelease: string
   priority: 'Express' | 'Normal'
+  /** 'Paid' (settled), 'Partial' (some paid, balance remains) or 'Pending' (none). */
   paymentStatus: string
+  /** Amount paid so far, as a peso string (e.g. "₱150"). */
+  amountPaid?: string
+  /** Outstanding balance, as a peso string (e.g. "₱145"). */
+  balance?: string
   status: string
   category: 'Express' | 'Full Service' | 'Self Service' | 'Commercial' | 'Ready Today'
   amount: string

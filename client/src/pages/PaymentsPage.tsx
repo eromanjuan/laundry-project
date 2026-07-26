@@ -24,17 +24,18 @@ function parsePeso(value: string) {
 
 function toRow(order: OrderRecord & WithDocId): PaymentRow {
   const paid = order.paymentStatus === 'Paid'
+  const partial = order.paymentStatus === 'Partial'
   return {
     orNumber: order.id,
     jobNumber: order.id,
     customer: order.customer,
     amountDue: order.amount,
-    amountPaid: paid ? order.amount : '₱0',
-    balance: paid ? '₱0' : order.amount,
-    paymentMethod: order.paymentStatus === 'Paid' ? 'Settled' : '—',
+    amountPaid: order.amountPaid ?? (paid ? order.amount : '₱0'),
+    balance: order.balance ?? (paid ? '₱0' : order.amount),
+    paymentMethod: paid ? 'Settled' : '—',
     paymentDate: order.date ?? order.timeReceived,
     cashier: '—',
-    status: paid ? 'Paid' : 'Unpaid',
+    status: paid ? 'Paid' : partial ? 'Partial' : 'Unpaid',
   }
 }
 
@@ -89,7 +90,7 @@ export function PaymentsPage() {
   const handleSavePayment = (row: PaymentRow) => {
     const order = orders.find((entry) => entry.id === row.jobNumber)
     if (!order) return
-    void update(order, { paymentStatus: 'Paid' })
+    void update(order, { paymentStatus: 'Paid', amountPaid: order.amount, balance: '₱0' })
     void publishStatus(order.id, order.status, { paymentStatus: 'Paid', balance: '₱0' })
     void addActivity({
       id: `${Date.now()}-${Math.round(Math.random() * 1e6)}`,

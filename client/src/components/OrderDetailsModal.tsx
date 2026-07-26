@@ -54,6 +54,9 @@ export function OrderDetailsModal({ order, machineAvailable, dryerAvailable, was
   if (!order) return null
 
   const isPaid = order.paymentStatus === 'Paid'
+  // Outstanding balance to collect, falling back sensibly for older orders.
+  const balanceDue = order.balance ?? (isPaid ? '₱0' : order.amount)
+  const amountPaid = order.amountPaid ?? (isPaid ? order.amount : '₱0')
   // The machine can only be changed while the laundry is actively on one — i.e.
   // Washing (a washer) or Drying (a dryer). Once Ready/Claimed it's locked.
   const isPending = order.status === 'Pending'
@@ -85,7 +88,9 @@ export function OrderDetailsModal({ order, machineAvailable, dryerAvailable, was
           <Row label="Weight" value={order.weight} />
           <Row label="Loads" value={String(order.loads)} />
           <Row label="Priority" value={order.priority} />
-          <Row label="Amount" value={order.amount} />
+          <Row label="Total" value={order.amount} />
+          {!isPaid ? <Row label="Paid" value={amountPaid} /> : null}
+          {!isPaid ? <Row label="Balance" value={balanceDue} /> : null}
           <Row label="Received" value={order.timeReceived} />
           {order.startedAt ? <Row label="Started" value={order.startedAt} /> : null}
           {order.releasedAt ? <Row label="Released" value={order.releasedAt} /> : null}
@@ -148,7 +153,7 @@ export function OrderDetailsModal({ order, machineAvailable, dryerAvailable, was
             onClick={() => onPay(order)}
             className="mt-6 flex w-full items-center justify-center gap-2 rounded-2xl bg-slate-900 px-4 py-3 text-sm font-semibold text-white transition hover:bg-slate-800"
           >
-            <FaMoneyBillWave /> Collect Full Payment ({order.amount})
+            <FaMoneyBillWave /> Collect Balance ({balanceDue})
           </button>
         ) : null}
 
