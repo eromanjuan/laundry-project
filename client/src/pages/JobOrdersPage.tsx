@@ -16,7 +16,7 @@ import { nextId, todayISO, nowStamp, seedActivity, seedCustomers, seedOrders, ty
 import { printReceipt, printReceipts, receiptDocType, type ReceiptData, type ReceiptItem, type ReceiptLine } from '../lib/printReceipt'
 import { trackUrl, publishStatus } from '../lib/tracking'
 
-const paymentMethods = ['Cash', 'GCash', 'Bank Transfer', 'Partial Payment']
+const paymentMethods = ['Cash', 'GCash']
 
 function peso(value: number) {
   return `₱${value.toLocaleString('en-PH')}`

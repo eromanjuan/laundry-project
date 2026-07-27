@@ -34,6 +34,10 @@ interface OrderDetailsModalProps {
   onReprintReceipt: (order: OrderRecord & WithDocId) => void
   /** Reprint the claim stub (the scannable barcode). */
   onReprintClaim: (order: OrderRecord & WithDocId) => void
+  /** GCash proof-of-payment the customer uploaded (image data URL), if any. */
+  paymentProof?: { image: string; submittedAt: number } | null
+  /** Confirm the uploaded GCash proof and settle the balance. */
+  onConfirmGcashProof: (order: OrderRecord & WithDocId) => void
 }
 
 function Row({ label, value }: { label: string; value: string }) {
@@ -45,7 +49,7 @@ function Row({ label, value }: { label: string; value: string }) {
   )
 }
 
-export function OrderDetailsModal({ order, machineAvailable, dryerAvailable, washerOptions, dryerOptions, onClose, onStart, onDry, onReady, onClaim, onPay, onReleaseUnpaid, onReassign, onReprintReceipt, onReprintClaim }: OrderDetailsModalProps) {
+export function OrderDetailsModal({ order, machineAvailable, dryerAvailable, washerOptions, dryerOptions, onClose, onStart, onDry, onReady, onClaim, onPay, onReleaseUnpaid, onReassign, onReprintReceipt, onReprintClaim, paymentProof, onConfirmGcashProof }: OrderDetailsModalProps) {
   // Staged machine pick — only applied when the user hits Save.
   const [pendingMachine, setPendingMachine] = useState('')
   // Reset the staged pick whenever a different order opens in the modal.
@@ -148,11 +152,28 @@ export function OrderDetailsModal({ order, machineAvailable, dryerAvailable, was
           )}
         </div>
 
+        {/* Customer-uploaded GCash proof — verify, then confirm to settle. */}
+        {paymentProof && !isPaid ? (
+          <div className="mt-4 rounded-2xl border border-blue-200 bg-blue-50/60 p-3">
+            <p className="text-sm font-semibold text-slate-700">GCash proof of payment submitted</p>
+            <p className="text-xs text-slate-500">Uploaded {new Date(paymentProof.submittedAt).toLocaleString()} — verify it, then confirm.</p>
+            <a href={paymentProof.image} target="_blank" rel="noreferrer">
+              <img src={paymentProof.image} alt="GCash proof" className="mx-auto mt-2 max-h-60 rounded-xl border border-slate-200 object-contain" />
+            </a>
+            <button
+              onClick={() => onConfirmGcashProof(order)}
+              className="mt-3 flex w-full items-center justify-center gap-2 rounded-2xl bg-emerald-600 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-emerald-700"
+            >
+              <FaCheckCircle /> Confirm GCash Payment ({balanceDue})
+            </button>
+          </div>
+        ) : null}
+
         {/* Collect payment — available whenever the order isn't fully paid. */}
         {!isPaid ? (
           <button
             onClick={() => onPay(order)}
-            className="mt-6 flex w-full items-center justify-center gap-2 rounded-2xl bg-slate-900 px-4 py-3 text-sm font-semibold text-white transition hover:bg-slate-800"
+            className="mt-4 flex w-full items-center justify-center gap-2 rounded-2xl bg-slate-900 px-4 py-3 text-sm font-semibold text-white transition hover:bg-slate-800"
           >
             <FaMoneyBillWave /> Collect Balance ({balanceDue})
           </button>

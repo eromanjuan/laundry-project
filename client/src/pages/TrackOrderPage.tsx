@@ -1,9 +1,11 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState, type ChangeEvent } from 'react'
 import { useParams } from 'react-router-dom'
 import { doc, onSnapshot } from 'firebase/firestore'
-import { FaTshirt, FaWind, FaBoxOpen, FaCheckCircle, FaClock, FaHourglassHalf, FaBell, FaBellSlash } from 'react-icons/fa'
+import { FaTshirt, FaWind, FaBoxOpen, FaCheckCircle, FaClock, FaHourglassHalf, FaBell, FaBellSlash, FaQrcode, FaUpload, FaCopy } from 'react-icons/fa'
 import { db, isFirebaseConfigured } from '../lib/firebase'
 import { subscribeToPush } from '../lib/push'
+import { usePaymentSettings } from '../hooks/usePaymentSettings'
+import { resizeImageToJpeg, submitPaymentProof } from '../lib/paymentProof'
 
 /** Public, sign-in-free laundry status page reached by scanning a receipt QR. */
 
@@ -44,6 +46,9 @@ export function TrackOrderPage() {
   const { id = '' } = useParams()
   const [record, setRecord] = useState<TrackingDoc | null>(null)
   const [state, setState] = useState<'loading' | 'ready' | 'notfound' | 'offline'>('loading')
+  const { payment } = usePaymentSettings()
+  const [showGcash, setShowGcash] = useState(false)
+  const [proof, setProof] = useState<'idle' | 'uploading' | 'done' | 'error'>('idle')
   const [notify, setNotify] = useState<NotifyState>(notifySupported ? (Notification.permission as NotifyState) : 'unsupported')
   // Last status we've already shown, so we only notify on real changes (never on
   // the first load).
@@ -77,6 +82,24 @@ export function TrackOrderPage() {
       // Subscribe to background push so updates arrive even when the tab is closed.
       await subscribeToPush(id, lastStatus.current ?? '')
     }
+  }
+
+  const handleProofUpload = async (event: ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0]
+    event.target.value = ''
+    if (!file) return
+    setProof('uploading')
+    try {
+      const image = await resizeImageToJpeg(file)
+      const ok = await submitPaymentProof(record?.id ?? id, image)
+      setProof(ok ? 'done' : 'error')
+    } catch {
+      setProof('error')
+    }
+  }
+
+  const copyGcashNumber = () => {
+    if (payment.gcashNumber) void navigator.clipboard?.writeText(payment.gcashNumber).catch(() => {})
   }
 
   // Returning visitor who already granted permission → (re)subscribe this order
@@ -175,6 +198,50 @@ export function TrackOrderPage() {
               <p className="mt-4 flex items-center justify-center gap-2 rounded-2xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm font-semibold text-emerald-700">
                 <FaCheckCircle /> Fully paid
               </p>
+            ) : null}
+
+            {/* Pay via GCash — show the merchant QR and let the customer upload proof. */}
+            {record.paymentStatus && record.paymentStatus !== 'Paid' ? (
+              <div className="mt-3">
+                {!showGcash ? (
+                  <button onClick={() => setShowGcash(true)} className="flex w-full items-center justify-center gap-2 rounded-2xl bg-blue-600 px-4 py-3 text-sm font-semibold text-white transition hover:bg-blue-700">
+                    <FaQrcode /> Pay via GCash
+                  </button>
+                ) : (
+                  <div className="rounded-2xl border border-blue-200 bg-blue-50/60 p-4">
+                    <p className="text-center text-sm font-semibold text-slate-800">Pay {record.balance ?? 'your balance'} via GCash</p>
+                    {payment.gcashQr ? (
+                      <img src={payment.gcashQr} alt="GCash QR" className="mx-auto mt-3 h-52 w-52 rounded-xl bg-white object-contain p-1" />
+                    ) : (
+                      <div className="mx-auto mt-3 flex h-32 items-center justify-center rounded-xl border border-dashed border-slate-300 px-4 text-center text-xs text-slate-400">
+                        The store hasn't set up a GCash QR yet — please pay at the counter.
+                      </div>
+                    )}
+                    {(payment.gcashName || payment.gcashNumber) ? (
+                      <div className="mt-2 flex items-center justify-center gap-2 text-sm font-semibold text-slate-800">
+                        <span>{payment.gcashName}{payment.gcashNumber ? ` • ${payment.gcashNumber}` : ''}</span>
+                        {payment.gcashNumber ? (
+                          <button onClick={copyGcashNumber} title="Copy number" className="rounded-lg border border-slate-200 bg-white p-1.5 text-slate-500 transition hover:bg-slate-50"><FaCopy /></button>
+                        ) : null}
+                      </div>
+                    ) : null}
+                    <ol className="mt-3 list-decimal space-y-1 pl-5 text-xs text-slate-600">
+                      <li>Open your GCash app and scan the QR (or send to the number above).</li>
+                      <li>Pay the pending balance.</li>
+                      <li>Upload your GCash receipt below as proof of payment.</li>
+                    </ol>
+                    {proof === 'done' ? (
+                      <p className="mt-3 flex items-center justify-center gap-2 rounded-2xl border border-emerald-200 bg-emerald-50 px-3 py-2.5 text-sm font-semibold text-emerald-700"><FaCheckCircle /> Proof submitted — the store will confirm your payment shortly.</p>
+                    ) : (
+                      <label className="mt-3 flex cursor-pointer items-center justify-center gap-2 rounded-2xl bg-slate-900 px-4 py-3 text-sm font-semibold text-white transition hover:bg-slate-800">
+                        <FaUpload /> {proof === 'uploading' ? 'Uploading…' : 'Upload GCash receipt'}
+                        <input type="file" accept="image/*" onChange={handleProofUpload} className="hidden" disabled={proof === 'uploading'} />
+                      </label>
+                    )}
+                    {proof === 'error' ? <p className="mt-2 text-center text-xs font-semibold text-rose-600">Upload failed. Please try again.</p> : null}
+                  </div>
+                )}
+              </div>
             ) : null}
 
             {/* Prominent notify prompt — the customer's one tap grants permission

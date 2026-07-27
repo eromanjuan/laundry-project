@@ -167,26 +167,35 @@ export function ClaimLaundryPage() {
   const confirmCollect = (result: PaymentResult) => {
     const order = payJob
     if (!order) return
+    const totalNum = parsePeso(order.amount)
+    const applied = result.cash + result.gcash
+    const newPaidNum = Math.min(totalNum, parsePeso(order.amountPaid) + applied)
+    const newBalanceNum = Math.max(0, totalNum - newPaidNum)
     const newCash = parsePeso(order.cashPaid) + result.cash
     const newGcash = parsePeso(order.gcashPaid) + result.gcash
+    const payStatus = newBalanceNum <= 0 ? 'Paid' : 'Partial'
     const methods: string[] = []
     if (newCash > 0) methods.push('Cash')
     if (newGcash > 0) methods.push('GCash')
-    const methodLabel = methods.join('+') || result.method
     const patch: Partial<OrderRecord> = {
-      paymentStatus: 'Paid',
-      amountPaid: order.amount,
-      balance: '₱0',
+      paymentStatus: payStatus,
+      amountPaid: peso(newPaidNum),
+      balance: peso(newBalanceNum),
       cashPaid: peso(newCash),
       gcashPaid: peso(newGcash),
-      paymentMethod: methodLabel,
+      paymentMethod: methods.join('+') || result.method,
     }
     void update(order, patch)
-    void publishStatus(order.id, order.status, { paymentStatus: 'Paid', balance: '₱0' })
-    logActivity(`${order.id}: balance settled via ${result.method} — cash ${peso(result.cash)}, GCash ${peso(result.gcash)}`)
+    void publishStatus(order.id, order.status, { paymentStatus: payStatus, balance: peso(newBalanceNum) })
+    logActivity(`${order.id}: ${peso(applied)} settled via ${result.method} — balance ${peso(newBalanceNum)}`)
     setSelected((current) => (current && current.id === order.id ? { ...current, ...patch } : current))
     setPayJob(null)
-    setFeedback({ tone: 'success', text: `Payment settled for ${order.id} via ${methodLabel}. You can now release it.` })
+    setFeedback({
+      tone: 'success',
+      text: newBalanceNum <= 0
+        ? `${order.id} fully paid via ${methods.join('+') || result.method}.`
+        : `${peso(applied)} collected for ${order.id}. Remaining balance ${peso(newBalanceNum)}.`,
+    })
   }
 
   const handleRelease = (order: OrderRecord & WithDocId) => {

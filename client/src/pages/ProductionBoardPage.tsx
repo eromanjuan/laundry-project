@@ -16,7 +16,8 @@ import { usePricing } from '../hooks/usePricing'
 import { usePaymentSettings } from '../hooks/usePaymentSettings'
 import { seedActivity, seedMachines, seedOrders, todayISO, nowStamp, type ActivityRecord, type MachineRecord, type OrderRecord } from '../data/seeds'
 import { findFreeWasher, findFreeDryer, oldestPending } from '../lib/machines'
-import { publishStatus, trackUrl } from '../lib/tracking'
+import { publishStatus, trackUrl, trackKey } from '../lib/tracking'
+import type { PaymentProof } from '../lib/paymentProof'
 import { printReceipt } from '../lib/printReceipt'
 import { buildOrderReceipt, buildOrderClaimStub, trackQrDataUrl } from '../lib/receipts'
 
@@ -63,6 +64,7 @@ export function ProductionBoardPage() {
   const { data: jobs, update } = useCollection<OrderRecord>('orders', seedOrders)
   const { data: machines, update: updateMachine } = useCollection<MachineRecord>('machines', seedMachines)
   const { data: activity, add: addActivity } = useCollection<ActivityRecord>('activity', seedActivity)
+  const { data: paymentProofs, update: updateProof } = useCollection<PaymentProof>('paymentProofs', [])
   const lgStatus = useLgStatus()
   const { user, verifyPassword } = useAuth()
   const { logoUrl } = useBranding()
@@ -353,33 +355,75 @@ export function ProductionBoardPage() {
   }
 
   // Settle the balance so the order can be released. Keeps the modal open, updated.
-  // Open the Cash / GCash / Split collection modal.
-  const handlePay = (job: OrderRecord & WithDocId) => setPayJob(job)
+  // Latest unreviewed GCash proof uploaded by the customer for an order.
+  const proofFor = (order: OrderRecord & WithDocId) => {
+    const key = trackKey(order.id)
+    return (
+      paymentProofs
+        .filter((p) => p.jobKey === key && !p.reviewed)
+        .sort((a, b) => (b.submittedAt || 0) - (a.submittedAt || 0))[0] ?? null
+    )
+  }
 
-  // Apply a collected payment: mark Paid and record the cash/GCash breakdown.
-  const confirmCollect = (result: PaymentResult) => {
-    const job = payJob
-    if (!job) return
-    const newCash = parsePeso(job.cashPaid) + result.cash
-    const newGcash = parsePeso(job.gcashPaid) + result.gcash
+  // Staff confirms a customer's uploaded GCash proof → settle the balance as GCash.
+  const confirmGcashProof = (order: OrderRecord & WithDocId) => {
+    const dueNum = parsePeso(order.balance ?? order.amount)
+    const newGcash = parsePeso(order.gcashPaid) + dueNum
+    const newCash = parsePeso(order.cashPaid)
     const methods: string[] = []
     if (newCash > 0) methods.push('Cash')
     if (newGcash > 0) methods.push('GCash')
-    const methodLabel = methods.join('+') || result.method
     const patch: Partial<OrderRecord> = {
       paymentStatus: 'Paid',
-      amountPaid: job.amount,
+      amountPaid: order.amount,
       balance: '₱0',
+      gcashPaid: peso(newGcash),
+      paymentMethod: methods.join('+') || 'GCash',
+    }
+    void update(order, patch)
+    void publishStatus(order.id, order.status, { paymentStatus: 'Paid', balance: '₱0' })
+    paymentProofs.filter((p) => p.jobKey === trackKey(order.id) && !p.reviewed).forEach((p) => void updateProof(p, { reviewed: true }))
+    logActivity(`${order.id}: GCash payment confirmed from uploaded proof (${peso(dueNum)})`)
+    setSelectedJob((current) => (current && current.id === order.id ? { ...current, ...patch } : current))
+    setFeedback({ tone: 'success', text: `GCash payment confirmed for ${order.id}. You can now release it.` })
+  }
+
+  // Open the Cash / GCash / Split collection modal.
+  const handlePay = (job: OrderRecord & WithDocId) => setPayJob(job)
+
+  // Apply a collected payment (full or partial): update paid/balance + method.
+  const confirmCollect = (result: PaymentResult) => {
+    const job = payJob
+    if (!job) return
+    const totalNum = parsePeso(job.amount)
+    const applied = result.cash + result.gcash
+    const newPaidNum = Math.min(totalNum, parsePeso(job.amountPaid) + applied)
+    const newBalanceNum = Math.max(0, totalNum - newPaidNum)
+    const newCash = parsePeso(job.cashPaid) + result.cash
+    const newGcash = parsePeso(job.gcashPaid) + result.gcash
+    const payStatus = newBalanceNum <= 0 ? 'Paid' : 'Partial'
+    const methods: string[] = []
+    if (newCash > 0) methods.push('Cash')
+    if (newGcash > 0) methods.push('GCash')
+    const patch: Partial<OrderRecord> = {
+      paymentStatus: payStatus,
+      amountPaid: peso(newPaidNum),
+      balance: peso(newBalanceNum),
       cashPaid: peso(newCash),
       gcashPaid: peso(newGcash),
-      paymentMethod: methodLabel,
+      paymentMethod: methods.join('+') || result.method,
     }
     void update(job, patch)
-    void publishStatus(job.id, job.status, { paymentStatus: 'Paid', balance: '₱0' })
-    logActivity(`${job.id}: balance collected via ${result.method} — cash ${peso(result.cash)}, GCash ${peso(result.gcash)}`)
+    void publishStatus(job.id, job.status, { paymentStatus: payStatus, balance: peso(newBalanceNum) })
+    logActivity(`${job.id}: ${peso(applied)} collected via ${result.method} — balance ${peso(newBalanceNum)}`)
     setSelectedJob((current) => (current && current.id === job.id ? { ...current, ...patch } : current))
     setPayJob(null)
-    setFeedback({ tone: 'success', text: `Payment collected for ${job.id} via ${methodLabel}. You can now release it.` })
+    setFeedback({
+      tone: 'success',
+      text: newBalanceNum <= 0
+        ? `${job.id} fully paid. You can now release it.`
+        : `${peso(applied)} collected for ${job.id}. Remaining balance ${peso(newBalanceNum)}.`,
+    })
   }
 
   // Reprints (always a COPY; provisional until fully paid) built from the order.
@@ -616,6 +660,8 @@ export function ProductionBoardPage() {
         onReassign={reassignMachine}
         onReprintReceipt={reprintReceipt}
         onReprintClaim={reprintClaim}
+        paymentProof={selectedJob ? proofFor(selectedJob) : null}
+        onConfirmGcashProof={confirmGcashProof}
       />
 
       <CollectPaymentModal

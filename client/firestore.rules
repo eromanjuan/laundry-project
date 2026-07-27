@@ -23,6 +23,17 @@ service cloud.firestore {
       allow write: if request.auth != null;
     }
 
+    // GCash proof-of-payment images uploaded by customers from the tracking page.
+    // Anyone may create a validated, size-capped proof; only signed-in staff can
+    // read them (to verify) or update/delete (to mark reviewed / clear).
+    match /paymentProofs/{id} {
+      allow read: if request.auth != null;
+      allow create: if request.resource.data.jobKey is string
+        && request.resource.data.image is string
+        && request.resource.data.image.size() < 1000000;
+      allow update, delete: if request.auth != null;
+    }
+
     // Push-notification subscriptions written by customers (unauthenticated) from
     // the tracking page. Never publicly readable (endpoints are semi-sensitive);
     // the push-sync GitHub Action reads/deletes them via the admin SDK. Writes are
