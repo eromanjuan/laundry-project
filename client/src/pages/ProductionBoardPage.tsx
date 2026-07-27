@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { FaSearch, FaHistory, FaTimes, FaCopy, FaExternalLinkAlt } from 'react-icons/fa'
-import { ProductionCard } from '../components/ProductionCard'
+import { ProductionCard, CARD_FIELDS } from '../components/ProductionCard'
 import { ProductionColumn } from '../components/ProductionColumn'
 import { OrderDetailsModal, type WasherOption } from '../components/OrderDetailsModal'
 import { ActivityLogModal } from '../components/ActivityLogModal'
@@ -65,6 +65,26 @@ export function ProductionBoardPage() {
   const [addOnFilter, setAddOnFilter] = useState('All')
   const [fromDate, setFromDate] = useState(todayISO())
   const [toDate, setToDate] = useState(todayISO())
+  // Which fields show on each card — persisted so the choice sticks.
+  const [visibleFields, setVisibleFields] = useState<string[]>(() => {
+    try {
+      const saved = localStorage.getItem('board.cardFields')
+      if (saved) return JSON.parse(saved) as string[]
+    } catch {
+      /* ignore */
+    }
+    return CARD_FIELDS.map((f) => f.key)
+  })
+  const toggleField = (key: string) =>
+    setVisibleFields((current) => {
+      const next = current.includes(key) ? current.filter((k) => k !== key) : [...current, key]
+      try {
+        localStorage.setItem('board.cardFields', JSON.stringify(next))
+      } catch {
+        /* ignore */
+      }
+      return next
+    })
   const [selectedJob, setSelectedJob] = useState<(OrderRecord & WithDocId) | null>(null)
   const [codeJob, setCodeJob] = useState<{ job: OrderRecord & WithDocId; url: string; qr?: string } | null>(null)
   const [feedback, setFeedback] = useState<{ tone: 'error' | 'success'; text: string } | null>(null)
@@ -466,6 +486,29 @@ export function ProductionBoardPage() {
             </select>
           </label>
         </div>
+
+        {/* Choose which fields appear on each order card. */}
+        <div className="mt-4 border-t border-slate-100 pt-4">
+          <p className="mb-2 text-xs font-semibold text-slate-500">Card fields</p>
+          <div className="flex flex-wrap gap-2">
+            {CARD_FIELDS.map((field) => {
+              const on = visibleFields.includes(field.key)
+              return (
+                <button
+                  key={field.key}
+                  type="button"
+                  onClick={() => toggleField(field.key)}
+                  aria-pressed={on}
+                  className={`rounded-full px-3 py-1.5 text-xs font-semibold transition ${
+                    on ? 'bg-blue-600 text-white' : 'bg-slate-100 text-slate-500 hover:bg-slate-200'
+                  }`}
+                >
+                  {field.label}
+                </button>
+              )
+            })}
+          </div>
+        </div>
       </div>
 
       {feedback ? (
@@ -502,7 +545,7 @@ export function ProductionBoardPage() {
                   onClick={() => setSelectedJob(job)}
                   className="cursor-grab active:cursor-grabbing"
                 >
-                  <ProductionCard job={job} onShowCode={() => showCode(job)} />
+                  <ProductionCard job={job} onShowCode={() => showCode(job)} fields={visibleFields} />
                 </div>
               ))}
             </ProductionColumn>
