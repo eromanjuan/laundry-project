@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { FaTimes, FaTshirt, FaCheckCircle, FaBoxOpen, FaPlay, FaMoneyBillWave, FaSave, FaWind, FaPrint, FaQrcode } from 'react-icons/fa'
 import type { OrderRecord } from '../data/seeds'
 import type { WithDocId } from '../hooks/useCollection'
+import { ImageViewerModal } from './ImageViewerModal'
 
 export interface WasherOption {
   name: string
@@ -56,6 +57,8 @@ export function OrderDetailsModal({ order, machineAvailable, dryerAvailable, was
   const [pendingMachine, setPendingMachine] = useState('')
   // Optional message to the customer when declining a GCash proof.
   const [declineMsg, setDeclineMsg] = useState('')
+  // Full-screen proof image viewer.
+  const [viewerSrc, setViewerSrc] = useState<string | null>(null)
   // Reset the staged pick whenever a different order opens in the modal.
   useEffect(() => { setPendingMachine(order?.assigned ?? '') }, [order?.id, order?.assigned])
 
@@ -161,9 +164,9 @@ export function OrderDetailsModal({ order, machineAvailable, dryerAvailable, was
           <div className="mt-4 rounded-2xl border border-blue-200 bg-blue-50/60 p-3">
             <p className="text-sm font-semibold text-slate-700">GCash proof of payment submitted</p>
             <p className="text-xs text-slate-500">Uploaded {new Date(paymentProof.submittedAt).toLocaleString()} — verify it, then confirm.</p>
-            <a href={paymentProof.image} target="_blank" rel="noreferrer">
-              <img src={paymentProof.image} alt="GCash proof" className="mx-auto mt-2 max-h-60 rounded-xl border border-slate-200 object-contain" />
-            </a>
+            <button type="button" onClick={() => setViewerSrc(paymentProof.image)} className="mt-2 block w-full" title="Tap to view full size">
+              <img src={paymentProof.image} alt="GCash proof" className="mx-auto max-h-60 cursor-zoom-in rounded-xl border border-slate-200 object-contain transition hover:opacity-90" />
+            </button>
             <button
               onClick={() => onConfirmGcashProof(order)}
               className="mt-3 flex w-full items-center justify-center gap-2 rounded-2xl bg-emerald-600 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-emerald-700"
@@ -292,6 +295,12 @@ export function OrderDetailsModal({ order, machineAvailable, dryerAvailable, was
           ) : null}
         </div>
       </div>
+
+      <ImageViewerModal
+        src={viewerSrc}
+        filename={`gcash-proof-${order.id.replace(/[^A-Za-z0-9-]/g, '')}.jpg`}
+        onClose={() => setViewerSrc(null)}
+      />
     </div>
   )
 }
