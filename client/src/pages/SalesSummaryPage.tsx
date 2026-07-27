@@ -56,6 +56,9 @@ export function SalesSummaryPage() {
     const gross = os.reduce((sum, o) => sum + parseAmount(o.amount), 0)
     const collected = os.filter((o) => o.paymentStatus === 'Paid').reduce((sum, o) => sum + parseAmount(o.amount), 0)
     const outstanding = os.filter((o) => o.paymentStatus !== 'Paid').reduce((sum, o) => sum + parseAmount(o.amount), 0)
+    // Amount received by method, across all orders (partial payments included).
+    const cash = os.reduce((sum, o) => sum + parseAmount(o.cashPaid ?? ''), 0)
+    const gcash = os.reduce((sum, o) => sum + parseAmount(o.gcashPaid ?? ''), 0)
     const totalExpenses = es.reduce((sum, e) => sum + parseAmount(e.amount), 0)
     const customers = new Set(os.map((o) => o.customer)).size
     const loads = os.reduce((sum, o) => sum + (o.loads || 0), 0)
@@ -67,7 +70,7 @@ export function SalesSummaryPage() {
     es.forEach((e) => { expenseByCat[e.category] = (expenseByCat[e.category] || 0) + parseAmount(e.amount) })
 
     return {
-      gross, collected, outstanding, totalExpenses,
+      gross, collected, outstanding, totalExpenses, cash, gcash,
       netProfit: collected - totalExpenses,
       orders: os.length, customers, loads,
       paid: os.filter((o) => o.paymentStatus === 'Paid').length,
@@ -83,6 +86,8 @@ export function SalesSummaryPage() {
     ['Period', rangeLabel],
     ['Gross Sales', data.gross],
     ['Collected', data.collected],
+    ['Collected via Cash', data.cash],
+    ['Collected via GCash', data.gcash],
     ['Outstanding', data.outstanding],
     ['Total Expenses', data.totalExpenses],
     ['Net Profit', data.netProfit],
@@ -130,6 +135,8 @@ export function SalesSummaryPage() {
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
         <SummaryStat label="Gross Sales" value={peso(data.gross)} accent="bg-blue-100 text-blue-700" />
         <SummaryStat label="Collected" value={peso(data.collected)} accent="bg-emerald-100 text-emerald-700" />
+        <SummaryStat label="Cash Received" value={peso(data.cash)} accent="bg-emerald-100 text-emerald-700" />
+        <SummaryStat label="GCash Received" value={peso(data.gcash)} accent="bg-blue-100 text-blue-700" />
         <SummaryStat label="Outstanding" value={peso(data.outstanding)} accent="bg-rose-100 text-rose-700" />
         <SummaryStat label="Total Expenses" value={peso(data.totalExpenses)} accent="bg-amber-100 text-amber-700" />
         <SummaryStat label="Net Profit" value={peso(data.netProfit)} accent="bg-violet-100 text-violet-700" />
@@ -144,6 +151,8 @@ export function SalesSummaryPage() {
             <Row label="Paid Orders" value={String(data.paid)} accent="text-emerald-700" />
             <Row label="Unpaid Orders" value={String(data.unpaid)} accent="text-rose-700" />
             <Row label="Collected" value={peso(data.collected)} />
+            <Row label="— via Cash" value={peso(data.cash)} accent="text-emerald-700" />
+            <Row label="— via GCash" value={peso(data.gcash)} accent="text-blue-700" />
             <Row label="Outstanding Balance" value={peso(data.outstanding)} />
           </div>
         </SectionCard>

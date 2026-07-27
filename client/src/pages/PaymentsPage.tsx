@@ -81,9 +81,11 @@ export function PaymentsPage() {
   const totals = useMemo(() => {
     const collected = orders.filter((o) => o.paymentStatus === 'Paid').reduce((sum, o) => sum + parsePeso(o.amount), 0)
     const outstanding = orders.filter((o) => o.paymentStatus !== 'Paid').reduce((sum, o) => sum + parsePeso(o.amount), 0)
+    const cash = orders.reduce((sum, o) => sum + parsePeso(o.cashPaid ?? ''), 0)
+    const gcash = orders.reduce((sum, o) => sum + parsePeso(o.gcashPaid ?? ''), 0)
     const paidCount = orders.filter((o) => o.paymentStatus === 'Paid').length
     const unpaidCount = orders.filter((o) => o.paymentStatus !== 'Paid').length
-    return { collected: peso(collected), outstanding: peso(outstanding), paidCount, unpaidCount }
+    return { collected: peso(collected), outstanding: peso(outstanding), cash: peso(cash), gcash: peso(gcash), paidCount, unpaidCount }
   }, [orders])
 
   // Receiving payment settles the order (marks it fully paid).
@@ -121,8 +123,10 @@ export function PaymentsPage() {
         </div>
       </section>
 
-      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
         <SummaryStat label="Total Collected" value={totals.collected} accent="bg-emerald-100 text-emerald-700" />
+        <SummaryStat label="Received via Cash" value={totals.cash} accent="bg-emerald-100 text-emerald-700" />
+        <SummaryStat label="Received via GCash" value={totals.gcash} accent="bg-blue-100 text-blue-700" />
         <SummaryStat label="Outstanding Balance" value={totals.outstanding} accent="bg-rose-100 text-rose-700" />
         <SummaryStat label="Paid Orders" value={String(totals.paidCount)} accent="bg-blue-100 text-blue-700" />
         <SummaryStat label="Unpaid Orders" value={String(totals.unpaidCount)} accent="bg-amber-100 text-amber-700" />
