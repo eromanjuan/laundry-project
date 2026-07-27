@@ -85,6 +85,12 @@ export interface OrderRecord {
   amountPaid?: string
   /** Outstanding balance, as a peso string (e.g. "₱145"). */
   balance?: string
+  /** How the order was paid: "Cash", "GCash", or "Cash+GCash". */
+  paymentMethod?: string
+  /** Cumulative amount received in cash, as a peso string. */
+  cashPaid?: string
+  /** Cumulative amount received via GCash, as a peso string. */
+  gcashPaid?: string
   status: string
   category: 'Express' | 'Full Service' | 'Self Service' | 'Commercial' | 'Ready Today'
   amount: string

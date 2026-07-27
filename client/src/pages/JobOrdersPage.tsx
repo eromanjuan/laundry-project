@@ -303,6 +303,9 @@ export function JobOrdersPage() {
     const balanceNum = Math.max(0, grandTotal - paidNum)
     const fullyPaid = balanceNum <= 0 && grandTotal > 0
     const payStatus = fullyPaid ? 'Paid' : paidNum > 0 ? 'Partial' : 'Pending'
+    // Split the tendered amount into cash / GCash buckets by the chosen method.
+    const gcashNum = paymentMethod === 'GCash' ? paidNum : 0
+    const cashNum = paidNum - gcashNum
 
     void addOrder({
       id: nextJobNumber,
@@ -318,6 +321,9 @@ export function JobOrdersPage() {
       paymentStatus: payStatus,
       amountPaid: peso(paidNum),
       balance: peso(balanceNum),
+      cashPaid: peso(cashNum),
+      gcashPaid: peso(gcashNum),
+      paymentMethod: paidNum > 0 ? (gcashNum > 0 ? 'GCash' : 'Cash') : '',
       status: 'Pending',
       category: priority === 'Express' ? 'Express' : 'Full Service',
       amount: peso(grandTotal),

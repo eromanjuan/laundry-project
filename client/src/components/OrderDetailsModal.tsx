@@ -85,6 +85,7 @@ export function OrderDetailsModal({ order, machineAvailable, dryerAvailable, was
         <div className="mt-5 grid gap-2 sm:grid-cols-2">
           <Row label="Status" value={order.status} />
           <Row label="Payment" value={order.paymentStatus} />
+          {order.paymentMethod ? <Row label="Method" value={order.paymentMethod} /> : null}
           <Row label="Weight" value={order.weight} />
           <Row label="Loads" value={String(order.loads)} />
           <Row label="Priority" value={order.priority} />

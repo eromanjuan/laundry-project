@@ -1,6 +1,8 @@
 import { useMemo, useState } from 'react'
 import { FaSearch, FaThList, FaThLarge, FaTags, FaListUl, FaSlidersH } from 'react-icons/fa'
 import { ClaimRecordModal } from '../components/ClaimRecordModal'
+import { CollectPaymentModal, type PaymentResult } from '../components/CollectPaymentModal'
+import { usePaymentSettings } from '../hooks/usePaymentSettings'
 import { SummaryStat } from '../components/SummaryStat'
 import { useCollection, type WithDocId } from '../hooks/useCollection'
 import { useAuth } from '../context/AuthContext'
@@ -112,7 +114,9 @@ export function ClaimLaundryPage() {
   const [visibleFields, setVisibleFields] = useState<string[]>(DEFAULT_FIELDS)
   const [showFieldMenu, setShowFieldMenu] = useState(false)
   const [selected, setSelected] = useState<(OrderRecord & WithDocId) | null>(null)
+  const [payJob, setPayJob] = useState<(OrderRecord & WithDocId) | null>(null)
   const [feedback, setFeedback] = useState<{ tone: 'error' | 'success'; text: string } | null>(null)
+  const { payment } = usePaymentSettings()
 
   const shownFields = FIELDS.filter((field) => visibleFields.includes(field.key))
   const orderById = (id: string) => orders.find((entry) => entry.id === id)
@@ -154,13 +158,35 @@ export function ClaimLaundryPage() {
     if (order) setSelected(order)
   }
 
-  const handleSettle = (order: OrderRecord & WithDocId) => {
-    const due = order.balance ?? order.amount
-    void update(order, { paymentStatus: 'Paid', amountPaid: order.amount, balance: '₱0' })
+  const parsePeso = (value?: string) => Number.parseFloat((value ?? '').replace(/[^\d.]/g, '')) || 0
+  const peso = (n: number) => `₱${(Math.round(n * 100) / 100).toLocaleString('en-PH')}`
+
+  // Open the Cash / GCash / Split collection modal.
+  const handleSettle = (order: OrderRecord & WithDocId) => setPayJob(order)
+
+  const confirmCollect = (result: PaymentResult) => {
+    const order = payJob
+    if (!order) return
+    const newCash = parsePeso(order.cashPaid) + result.cash
+    const newGcash = parsePeso(order.gcashPaid) + result.gcash
+    const methods: string[] = []
+    if (newCash > 0) methods.push('Cash')
+    if (newGcash > 0) methods.push('GCash')
+    const methodLabel = methods.join('+') || result.method
+    const patch: Partial<OrderRecord> = {
+      paymentStatus: 'Paid',
+      amountPaid: order.amount,
+      balance: '₱0',
+      cashPaid: peso(newCash),
+      gcashPaid: peso(newGcash),
+      paymentMethod: methodLabel,
+    }
+    void update(order, patch)
     void publishStatus(order.id, order.status, { paymentStatus: 'Paid', balance: '₱0' })
-    logActivity(`${order.id}: balance settled (${due})`)
-    setSelected({ ...order, paymentStatus: 'Paid' })
-    setFeedback({ tone: 'success', text: `Payment settled for ${order.id}. You can now release it.` })
+    logActivity(`${order.id}: balance settled via ${result.method} — cash ${peso(result.cash)}, GCash ${peso(result.gcash)}`)
+    setSelected((current) => (current && current.id === order.id ? { ...current, ...patch } : current))
+    setPayJob(null)
+    setFeedback({ tone: 'success', text: `Payment settled for ${order.id} via ${methodLabel}. You can now release it.` })
   }
 
   const handleRelease = (order: OrderRecord & WithDocId) => {
@@ -345,6 +371,15 @@ export function ClaimLaundryPage() {
         onSettle={handleSettle}
         onRelease={handleRelease}
         onPrint={handlePrint}
+      />
+
+      <CollectPaymentModal
+        isOpen={Boolean(payJob)}
+        due={payJob ? parsePeso(payJob.balance ?? payJob.amount) : 0}
+        label={payJob ? `${payJob.id} • ${payJob.customer}` : ''}
+        gcash={payment}
+        onClose={() => setPayJob(null)}
+        onConfirm={confirmCollect}
       />
     </div>
   )

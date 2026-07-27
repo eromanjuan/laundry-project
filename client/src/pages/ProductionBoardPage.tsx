@@ -5,6 +5,7 @@ import { ProductionColumn } from '../components/ProductionColumn'
 import { OrderDetailsModal, type WasherOption } from '../components/OrderDetailsModal'
 import { ActivityLogModal } from '../components/ActivityLogModal'
 import { RevertStageModal } from '../components/RevertStageModal'
+import { CollectPaymentModal, type PaymentResult } from '../components/CollectPaymentModal'
 import { SummaryStat } from '../components/SummaryStat'
 import { useCollection, type WithDocId } from '../hooks/useCollection'
 import { useLgStatus } from '../hooks/useLgStatus'
@@ -12,6 +13,7 @@ import { useAuth } from '../context/AuthContext'
 import { useBranding } from '../hooks/useBranding'
 import { useBusiness } from '../hooks/useBusiness'
 import { usePricing } from '../hooks/usePricing'
+import { usePaymentSettings } from '../hooks/usePaymentSettings'
 import { seedActivity, seedMachines, seedOrders, todayISO, nowStamp, type ActivityRecord, type MachineRecord, type OrderRecord } from '../data/seeds'
 import { findFreeWasher, findFreeDryer, oldestPending } from '../lib/machines'
 import { publishStatus, trackUrl } from '../lib/tracking'
@@ -29,6 +31,15 @@ const columnAccent: Record<string, string> = {
   Drying: 'bg-orange-100 text-orange-700',
   Ready: 'bg-emerald-100 text-emerald-700',
   Claimed: 'bg-blue-100 text-blue-700',
+}
+
+/** Parse a peso string ("₱1,250") to a number. */
+function parsePeso(value?: string): number {
+  return Number.parseFloat((value ?? '').replace(/[^\d.]/g, '')) || 0
+}
+/** Format a number as a peso string. */
+function peso(n: number): string {
+  return `₱${(Math.round(n * 100) / 100).toLocaleString('en-PH')}`
 }
 
 /** Creation time (ms) for FIFO ordering; 0 when unknown. */
@@ -57,6 +68,7 @@ export function ProductionBoardPage() {
   const { logoUrl } = useBranding()
   const { business } = useBusiness()
   const { pricing } = usePricing()
+  const { payment } = usePaymentSettings()
   const [showLog, setShowLog] = useState(false)
   const [query, setQuery] = useState('')
 
@@ -93,6 +105,7 @@ export function ProductionBoardPage() {
     })
   const [selectedJob, setSelectedJob] = useState<(OrderRecord & WithDocId) | null>(null)
   const [codeJob, setCodeJob] = useState<{ job: OrderRecord & WithDocId; url: string; qr?: string } | null>(null)
+  const [payJob, setPayJob] = useState<(OrderRecord & WithDocId) | null>(null)
   const [feedback, setFeedback] = useState<{ tone: 'error' | 'success'; text: string } | null>(null)
   // A pending backward move awaiting reason + password confirmation.
   const [pendingRevert, setPendingRevert] = useState<
@@ -340,13 +353,33 @@ export function ProductionBoardPage() {
   }
 
   // Settle the balance so the order can be released. Keeps the modal open, updated.
-  const handlePay = (job: OrderRecord & WithDocId) => {
-    const due = job.balance ?? job.amount
-    void update(job, { paymentStatus: 'Paid', amountPaid: job.amount, balance: '₱0' })
+  // Open the Cash / GCash / Split collection modal.
+  const handlePay = (job: OrderRecord & WithDocId) => setPayJob(job)
+
+  // Apply a collected payment: mark Paid and record the cash/GCash breakdown.
+  const confirmCollect = (result: PaymentResult) => {
+    const job = payJob
+    if (!job) return
+    const newCash = parsePeso(job.cashPaid) + result.cash
+    const newGcash = parsePeso(job.gcashPaid) + result.gcash
+    const methods: string[] = []
+    if (newCash > 0) methods.push('Cash')
+    if (newGcash > 0) methods.push('GCash')
+    const methodLabel = methods.join('+') || result.method
+    const patch: Partial<OrderRecord> = {
+      paymentStatus: 'Paid',
+      amountPaid: job.amount,
+      balance: '₱0',
+      cashPaid: peso(newCash),
+      gcashPaid: peso(newGcash),
+      paymentMethod: methodLabel,
+    }
+    void update(job, patch)
     void publishStatus(job.id, job.status, { paymentStatus: 'Paid', balance: '₱0' })
-    logActivity(`${job.id}: balance collected (${due})`)
-    setSelectedJob({ ...job, paymentStatus: 'Paid', amountPaid: job.amount, balance: '₱0' })
-    setFeedback({ tone: 'success', text: `Balance collected for ${job.id} (${due}). You can now release it.` })
+    logActivity(`${job.id}: balance collected via ${result.method} — cash ${peso(result.cash)}, GCash ${peso(result.gcash)}`)
+    setSelectedJob((current) => (current && current.id === job.id ? { ...current, ...patch } : current))
+    setPayJob(null)
+    setFeedback({ tone: 'success', text: `Payment collected for ${job.id} via ${methodLabel}. You can now release it.` })
   }
 
   // Reprints (always a COPY; provisional until fully paid) built from the order.
@@ -583,6 +616,15 @@ export function ProductionBoardPage() {
         onReassign={reassignMachine}
         onReprintReceipt={reprintReceipt}
         onReprintClaim={reprintClaim}
+      />
+
+      <CollectPaymentModal
+        isOpen={Boolean(payJob)}
+        due={payJob ? parsePeso(payJob.balance ?? payJob.amount) : 0}
+        label={payJob ? `${payJob.id} • ${payJob.customer}` : ''}
+        gcash={payment}
+        onClose={() => setPayJob(null)}
+        onConfirm={confirmCollect}
       />
 
       {/* Scannable tracking code popover for a card's barcode icon. */}

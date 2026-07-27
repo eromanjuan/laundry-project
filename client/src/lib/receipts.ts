@@ -54,6 +54,7 @@ export function buildOrderReceipt(
       { label: 'Total', value: order.amount },
       { label: 'Paid', value: order.amountPaid ?? (paid ? order.amount : '₱0') },
       { label: 'Balance', value: order.balance ?? (paid ? '₱0' : order.amount) },
+      ...(order.paymentMethod ? [{ label: 'Method', value: order.paymentMethod }] : []),
       { label: 'Status', value: order.paymentStatus },
     ],
     footer: paid ? business.footer : 'UNPAID — settle the balance to get your official paid receipt.',

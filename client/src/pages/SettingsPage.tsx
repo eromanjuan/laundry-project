@@ -5,6 +5,7 @@ import { usePricing } from '../hooks/usePricing'
 import { usePermissions } from '../hooks/usePermissions'
 import { useBranding, fileToResizedDataUrl } from '../hooks/useBranding'
 import { useBusiness } from '../hooks/useBusiness'
+import { usePaymentSettings } from '../hooks/usePaymentSettings'
 import { useLgConnection } from '../hooks/useLgConnection'
 import { useLgStatus, syncLgNow } from '../hooks/useLgStatus'
 import { backupDatabase, restoreDatabase } from '../lib/backup'
@@ -172,6 +173,9 @@ export function SettingsPage() {
   const { managePricing: canManagePricing } = usePermissions()
   const { logoUrl, saveLogo, resetLogo } = useBranding()
   const { business, save: saveBusiness } = useBusiness()
+  const { payment: gcashSettings, save: saveGcash } = usePaymentSettings()
+  const [gcashForm, setGcashForm] = useState({ gcashName: '', gcashNumber: '', gcashQr: '' })
+  const [gcashSaved, setGcashSaved] = useState(false)
   const { connection: lg, save: saveLg } = useLgConnection()
   const { manageMachines } = usePermissions()
   const [savedConfig, setSavedConfig] = useState(false)
@@ -294,6 +298,26 @@ export function SettingsPage() {
       console.error('Logo upload failed:', error)
     }
     event.target.value = ''
+  }
+
+  useEffect(() => setGcashForm(gcashSettings), [gcashSettings])
+
+  const handleGcashQrUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0]
+    if (!file) return
+    try {
+      const dataUrl = await fileToResizedDataUrl(file, 512)
+      setGcashForm((current) => ({ ...current, gcashQr: dataUrl }))
+    } catch (error) {
+      console.error('GCash QR upload failed:', error)
+    }
+    event.target.value = ''
+  }
+
+  const handleSaveGcash = () => {
+    void saveGcash(gcashForm)
+    setGcashSaved(true)
+    setTimeout(() => setGcashSaved(false), 2500)
   }
   const [priceForm, setPriceForm] = useState(pricing)
   const [pricingSaved, setPricingSaved] = useState(false)
@@ -479,6 +503,46 @@ export function SettingsPage() {
                     Only Administrators and Managers can change the logo.
                   </p>
                 )}
+              </div>
+            </SectionCard>
+
+            <SectionCard title="GCash Payment" subtitle="Your GCash QR & number — shown to customers when they pay by GCash.">
+              <div className="grid gap-4 md:grid-cols-[1fr_auto]">
+                <div className="space-y-3">
+                  <label className="block space-y-1">
+                    <span className="text-sm font-semibold text-slate-700">GCash Account Name</span>
+                    <input value={gcashForm.gcashName} onChange={(e) => setGcashForm((f) => ({ ...f, gcashName: e.target.value }))} className="w-full rounded-2xl border border-slate-200 px-3 py-2.5 outline-none focus:border-blue-400" placeholder="e.g. Juan D." />
+                  </label>
+                  <label className="block space-y-1">
+                    <span className="text-sm font-semibold text-slate-700">GCash Number</span>
+                    <input value={gcashForm.gcashNumber} onChange={(e) => setGcashForm((f) => ({ ...f, gcashNumber: e.target.value }))} className="w-full rounded-2xl border border-slate-200 px-3 py-2.5 outline-none focus:border-blue-400" placeholder="e.g. 0917 000 0000" />
+                  </label>
+                  {canManagePricing ? (
+                    <div className="flex flex-wrap items-center gap-2">
+                      <label className="flex cursor-pointer items-center gap-2 rounded-2xl bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-blue-700">
+                        <FaUpload /> Upload GCash QR
+                        <input type="file" accept="image/*" onChange={handleGcashQrUpload} className="hidden" />
+                      </label>
+                      {gcashForm.gcashQr ? (
+                        <button onClick={() => setGcashForm((f) => ({ ...f, gcashQr: '' }))} className="rounded-2xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 transition hover:bg-slate-50">Remove QR</button>
+                      ) : null}
+                      <button onClick={handleSaveGcash} className="flex items-center gap-2 rounded-2xl bg-emerald-600 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-emerald-700">
+                        <FaSave /> {gcashSaved ? 'Saved!' : 'Save GCash'}
+                      </button>
+                    </div>
+                  ) : (
+                    <p className="rounded-2xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-semibold text-amber-700">
+                      Only Administrators and Managers can change GCash settings.
+                    </p>
+                  )}
+                </div>
+                <div className="flex h-40 w-40 shrink-0 items-center justify-center overflow-hidden rounded-2xl border border-dashed border-slate-300 bg-slate-50">
+                  {gcashForm.gcashQr ? (
+                    <img src={gcashForm.gcashQr} alt="GCash QR" className="h-full w-full object-contain p-1" />
+                  ) : (
+                    <span className="px-3 text-center text-xs text-slate-400">GCash QR preview</span>
+                  )}
+                </div>
               </div>
             </SectionCard>
           </div>
