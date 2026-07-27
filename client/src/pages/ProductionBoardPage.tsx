@@ -31,6 +31,12 @@ const columnAccent: Record<string, string> = {
   Claimed: 'bg-blue-100 text-blue-700',
 }
 
+/** Creation time (ms) for FIFO ordering; 0 when unknown. */
+function createdMs(job: OrderRecord & WithDocId): number {
+  const created = (job as unknown as Record<string, unknown>).createdAt
+  return typeof created === 'number' ? created : 0
+}
+
 /** Resolve an order's calendar date: explicit `date`, else derived from createdAt. */
 function orderDate(job: OrderRecord & WithDocId): string {
   if (job.date) return job.date
@@ -98,18 +104,26 @@ export function ProductionBoardPage() {
     const search = query.trim().toLowerCase()
     const svc = (job: OrderRecord) => (job.service ?? '').toLowerCase()
 
-    return jobs.filter((job) => {
-      const date = orderDate(job)
-      // Only apply date bounds to orders that have a resolvable date.
-      const matchesDate = !date || ((!fromDate || date >= fromDate) && (!toDate || date <= toDate))
-      const matchesStage = stageFilter === 'All' || job.status === stageFilter
-      const matchesService = serviceFilter === 'All' || svc(job).includes(serviceFilter.toLowerCase())
-      const matchesLoadType = loadTypeFilter === 'All' || svc(job).includes(loadTypeFilter.toLowerCase())
-      const matchesPriority = priorityFilter === 'All' || job.priority === priorityFilter
-      const matchesAddOn = addOnFilter === 'All' || (job.addOns ?? '').toLowerCase().includes(addOnFilter.toLowerCase())
-      const matchesSearch = !search || [job.id, job.customer].join(' ').toLowerCase().includes(search)
-      return matchesDate && matchesStage && matchesService && matchesLoadType && matchesPriority && matchesAddOn && matchesSearch
-    })
+    return jobs
+      .filter((job) => {
+        const date = orderDate(job)
+        // Only apply date bounds to orders that have a resolvable date.
+        const matchesDate = !date || ((!fromDate || date >= fromDate) && (!toDate || date <= toDate))
+        const matchesStage = stageFilter === 'All' || job.status === stageFilter
+        const matchesService = serviceFilter === 'All' || svc(job).includes(serviceFilter.toLowerCase())
+        const matchesLoadType = loadTypeFilter === 'All' || svc(job).includes(loadTypeFilter.toLowerCase())
+        const matchesPriority = priorityFilter === 'All' || job.priority === priorityFilter
+        const matchesAddOn = addOnFilter === 'All' || (job.addOns ?? '').toLowerCase().includes(addOnFilter.toLowerCase())
+        const matchesSearch = !search || [job.id, job.customer].join(' ').toLowerCase().includes(search)
+        return matchesDate && matchesStage && matchesService && matchesLoadType && matchesPriority && matchesAddOn && matchesSearch
+      })
+      // Oldest order first (first come, first served); job number breaks ties.
+      .sort((a, b) => {
+        const byTime = createdMs(a) - createdMs(b)
+        if (byTime !== 0) return byTime
+        const num = (id: string) => Number.parseInt(String(id).replace(/\D/g, ''), 10) || 0
+        return num(a.id) - num(b.id)
+      })
   }, [jobs, query, stageFilter, serviceFilter, loadTypeFilter, priorityFilter, addOnFilter, fromDate, toDate])
 
   const groupedJobs = statuses.reduce((acc, status) => {
