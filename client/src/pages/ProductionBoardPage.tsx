@@ -381,11 +381,20 @@ export function ProductionBoardPage() {
       paymentMethod: methods.join('+') || 'GCash',
     }
     void update(order, patch)
-    void publishStatus(order.id, order.status, { paymentStatus: 'Paid', balance: '₱0' })
+    void publishStatus(order.id, order.status, { paymentStatus: 'Paid', balance: '₱0', note: '' })
     paymentProofs.filter((p) => p.jobKey === trackKey(order.id) && !p.reviewed).forEach((p) => void updateProof(p, { reviewed: true }))
     logActivity(`${order.id}: GCash payment confirmed from uploaded proof (${peso(dueNum)})`)
     setSelectedJob((current) => (current && current.id === order.id ? { ...current, ...patch } : current))
     setFeedback({ tone: 'success', text: `GCash payment confirmed for ${order.id}. You can now release it.` })
+  }
+
+  // Reject an uploaded proof (e.g. insufficient) and message the customer.
+  const declineProof = (order: OrderRecord & WithDocId, message: string) => {
+    const note = message.trim() || `Your GCash payment could not be verified or is insufficient. The remaining balance is ${order.balance ?? order.amount}. Please pay it and upload a new receipt.`
+    paymentProofs.filter((p) => p.jobKey === trackKey(order.id) && !p.reviewed).forEach((p) => void updateProof(p, { reviewed: true }))
+    void publishStatus(order.id, order.status, { note })
+    logActivity(`${order.id}: GCash proof declined — ${note}`)
+    setFeedback({ tone: 'success', text: `Proof declined for ${order.id}. The customer has been notified.` })
   }
 
   // Open the Cash / GCash / Split collection modal.
@@ -414,7 +423,7 @@ export function ProductionBoardPage() {
       paymentMethod: methods.join('+') || result.method,
     }
     void update(job, patch)
-    void publishStatus(job.id, job.status, { paymentStatus: payStatus, balance: peso(newBalanceNum) })
+    void publishStatus(job.id, job.status, { paymentStatus: payStatus, balance: peso(newBalanceNum), note: '' })
     logActivity(`${job.id}: ${peso(applied)} collected via ${result.method} — balance ${peso(newBalanceNum)}`)
     setSelectedJob((current) => (current && current.id === job.id ? { ...current, ...patch } : current))
     setPayJob(null)
@@ -662,6 +671,7 @@ export function ProductionBoardPage() {
         onReprintClaim={reprintClaim}
         paymentProof={selectedJob ? proofFor(selectedJob) : null}
         onConfirmGcashProof={confirmGcashProof}
+        onDeclineProof={declineProof}
       />
 
       <CollectPaymentModal

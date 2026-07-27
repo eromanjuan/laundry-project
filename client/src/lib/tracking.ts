@@ -18,6 +18,8 @@ export function trackKey(jobId: string): string {
 export interface TrackingPayment {
   paymentStatus?: string
   balance?: string
+  /** A message from the store to the customer (e.g. a declined GCash payment). */
+  note?: string
 }
 
 /**
@@ -36,6 +38,7 @@ export async function publishStatus(jobId: string, status: string, payment?: Tra
     const data: Record<string, unknown> = { id: jobId, status, updatedAt: Date.now() }
     if (payment?.paymentStatus !== undefined) data.paymentStatus = payment.paymentStatus
     if (payment?.balance !== undefined) data.balance = payment.balance
+    if (payment?.note !== undefined) data.paymentNote = payment.note
     await setDoc(doc(db, 'tracking', key), data, { merge: true })
   } catch (error) {
     console.error('[tracking] publishStatus failed:', error)

@@ -38,6 +38,8 @@ interface OrderDetailsModalProps {
   paymentProof?: { image: string; submittedAt: number } | null
   /** Confirm the uploaded GCash proof and settle the balance. */
   onConfirmGcashProof: (order: OrderRecord & WithDocId) => void
+  /** Decline the uploaded proof and message the customer. */
+  onDeclineProof: (order: OrderRecord & WithDocId, message: string) => void
 }
 
 function Row({ label, value }: { label: string; value: string }) {
@@ -49,9 +51,11 @@ function Row({ label, value }: { label: string; value: string }) {
   )
 }
 
-export function OrderDetailsModal({ order, machineAvailable, dryerAvailable, washerOptions, dryerOptions, onClose, onStart, onDry, onReady, onClaim, onPay, onReleaseUnpaid, onReassign, onReprintReceipt, onReprintClaim, paymentProof, onConfirmGcashProof }: OrderDetailsModalProps) {
+export function OrderDetailsModal({ order, machineAvailable, dryerAvailable, washerOptions, dryerOptions, onClose, onStart, onDry, onReady, onClaim, onPay, onReleaseUnpaid, onReassign, onReprintReceipt, onReprintClaim, paymentProof, onConfirmGcashProof, onDeclineProof }: OrderDetailsModalProps) {
   // Staged machine pick — only applied when the user hits Save.
   const [pendingMachine, setPendingMachine] = useState('')
+  // Optional message to the customer when declining a GCash proof.
+  const [declineMsg, setDeclineMsg] = useState('')
   // Reset the staged pick whenever a different order opens in the modal.
   useEffect(() => { setPendingMachine(order?.assigned ?? '') }, [order?.id, order?.assigned])
 
@@ -165,6 +169,20 @@ export function OrderDetailsModal({ order, machineAvailable, dryerAvailable, was
               className="mt-3 flex w-full items-center justify-center gap-2 rounded-2xl bg-emerald-600 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-emerald-700"
             >
               <FaCheckCircle /> Confirm GCash Payment ({balanceDue})
+            </button>
+            {/* Decline — e.g. amount short. Message reaches the customer's track page. */}
+            <textarea
+              value={declineMsg}
+              onChange={(event) => setDeclineMsg(event.target.value)}
+              rows={2}
+              placeholder={`Optional message — e.g. "Only ₱1 received, balance is ${balanceDue}. Please pay the rest."`}
+              className="mt-2 w-full resize-none rounded-xl border border-slate-200 px-3 py-2 text-sm outline-none focus:border-blue-400"
+            />
+            <button
+              onClick={() => { onDeclineProof(order, declineMsg); setDeclineMsg('') }}
+              className="mt-2 flex w-full items-center justify-center gap-2 rounded-2xl border border-rose-300 bg-rose-50 px-4 py-2.5 text-sm font-semibold text-rose-700 transition hover:bg-rose-100"
+            >
+              <FaTimes /> Decline &amp; Message Customer
             </button>
           </div>
         ) : null}

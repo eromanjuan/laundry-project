@@ -15,6 +15,7 @@ interface TrackingDoc {
   updatedAt?: number
   paymentStatus?: string
   balance?: string
+  paymentNote?: string
 }
 
 const STAGES = [
@@ -200,6 +201,14 @@ export function TrackOrderPage() {
               </p>
             ) : null}
 
+            {/* A message from the store, e.g. a declined/insufficient GCash payment. */}
+            {record.paymentNote && record.paymentStatus !== 'Paid' ? (
+              <div className="mt-3 rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-center">
+                <p className="text-sm font-semibold text-rose-700">Message from the store</p>
+                <p className="mt-1 text-sm text-rose-600">{record.paymentNote}</p>
+              </div>
+            ) : null}
+
             {/* Pay via GCash — show the merchant QR and let the customer upload proof. */}
             {record.paymentStatus && record.paymentStatus !== 'Paid' ? (
               <div className="mt-3">
@@ -232,12 +241,11 @@ export function TrackOrderPage() {
                     </ol>
                     {proof === 'done' ? (
                       <p className="mt-3 flex items-center justify-center gap-2 rounded-2xl border border-emerald-200 bg-emerald-50 px-3 py-2.5 text-sm font-semibold text-emerald-700"><FaCheckCircle /> Proof submitted — the store will confirm your payment shortly.</p>
-                    ) : (
-                      <label className="mt-3 flex cursor-pointer items-center justify-center gap-2 rounded-2xl bg-slate-900 px-4 py-3 text-sm font-semibold text-white transition hover:bg-slate-800">
-                        <FaUpload /> {proof === 'uploading' ? 'Uploading…' : 'Upload GCash receipt'}
-                        <input type="file" accept="image/*" onChange={handleProofUpload} className="hidden" disabled={proof === 'uploading'} />
-                      </label>
-                    )}
+                    ) : null}
+                    <label className="mt-2 flex cursor-pointer items-center justify-center gap-2 rounded-2xl bg-slate-900 px-4 py-3 text-sm font-semibold text-white transition hover:bg-slate-800">
+                      <FaUpload /> {proof === 'uploading' ? 'Uploading…' : proof === 'done' ? 'Upload another receipt' : 'Upload GCash receipt'}
+                      <input type="file" accept="image/*" onChange={handleProofUpload} className="hidden" disabled={proof === 'uploading'} />
+                    </label>
                     {proof === 'error' ? <p className="mt-2 text-center text-xs font-semibold text-rose-600">Upload failed. Please try again.</p> : null}
                   </div>
                 )}
