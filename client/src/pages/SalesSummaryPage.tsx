@@ -1,9 +1,22 @@
 import { useMemo, useState } from 'react'
-import { FaFileExcel, FaPrint } from 'react-icons/fa'
+import { FaFileExcel, FaPrint, FaReceipt } from 'react-icons/fa'
 import { SummaryStat } from '../components/SummaryStat'
 import { useCollection, type WithDocId } from '../hooks/useCollection'
-import { seedExpenses, seedOrders, todayISO, type ExpenseRecord, type OrderRecord } from '../data/seeds'
+import { useBusiness } from '../hooks/useBusiness'
+import { useBranding } from '../hooks/useBranding'
+import { usePaymentSettings } from '../hooks/usePaymentSettings'
+import { useAuth } from '../context/AuthContext'
+import { seedExpenses, seedOrders, todayISO, nowStamp, type ExpenseRecord, type OrderRecord } from '../data/seeds'
 import { downloadCsv, printReport } from '../lib/exports'
+import { printThermal } from '../lib/printReceipt'
+
+/** Peso with 2 decimals, for the printed receipt (e.g. ₱7,698.00). */
+function pesoR(n: number) {
+  return `₱${n.toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+}
+function num(value: string) {
+  return Number.parseFloat((value || '').replace(/[^\d.-]/g, '')) || 0
+}
 
 function parseAmount(value: string) {
   return Number.parseFloat(value.replace(/[^\d.-]/g, '')) || 0
@@ -45,8 +58,18 @@ function Row({ label, value, accent }: { label: string; value: string; accent?: 
 export function SalesSummaryPage() {
   const { data: orders } = useCollection<OrderRecord>('orders', seedOrders)
   const { data: expenses } = useCollection<ExpenseRecord>('expenses', seedExpenses)
+  const { business } = useBusiness()
+  const { logoUrl } = useBranding()
+  const { payment } = usePaymentSettings()
+  const { user } = useAuth()
   const [fromDate, setFromDate] = useState(todayISO())
   const [toDate, setToDate] = useState(todayISO())
+  // Cash-count figures for the printed shift/sales-summary receipt.
+  const [startingCash, setStartingCash] = useState('')
+  const [actualCash, setActualCash] = useState('')
+  const [paidIn, setPaidIn] = useState('')
+  const [paidOut, setPaidOut] = useState('')
+  const [cashRefunds, setCashRefunds] = useState('')
 
   const data = useMemo(() => {
     const inRange = (date: string) => (!fromDate || date >= fromDate) && (!toDate || date <= toDate)
@@ -104,6 +127,58 @@ export function SalesSummaryPage() {
     printReport(`Sales Summary — ${rangeLabel}`, body)
   }
 
+  /** Thermal receipt: cash-drawer reconciliation + sales summary (Cash/GCash). */
+  const printSalesReceipt = () => {
+    const cashPayments = data.cash
+    const startNum = num(startingCash)
+    const inNum = num(paidIn)
+    const outNum = num(paidOut)
+    const cashRefundNum = num(cashRefunds)
+    const actualNum = num(actualCash)
+    const expectedCash = startNum + cashPayments + inNum - cashRefundNum - outNum
+    const difference = actualNum - expectedCash
+    const netSales = data.gross // no refunds/discounts tracked separately
+    const gcashLabel = payment.gcashNumber ? `G CASH - ${payment.gcashNumber}` : 'G CASH'
+
+    const row = (label: string, value: string, bold = false) =>
+      `<tr><td${bold ? ' class="b"' : ''}>${label}</td><td class="r${bold ? ' b' : ''}">${value}</td></tr>`
+
+    const html = `
+      ${logoUrl ? `<img class="logo" src="${logoUrl}" alt="" />` : ''}
+      <div class="center title">${business.name || 'Laundry Project'}</div>
+      ${business.branch ? `<div class="center muted">${business.branch}</div>` : ''}
+      <div class="center muted">SALES SUMMARY</div>
+      <div class="center muted">${rangeLabel}</div>
+      <div class="center muted">Printed: ${nowStamp()}</div>
+      <div class="hr"></div>
+      <table>
+        ${row('Starting cash', pesoR(startNum))}
+        ${row('Cash payments', pesoR(cashPayments))}
+        ${row('Cash refunds', pesoR(cashRefundNum))}
+        ${row('Paid in', pesoR(inNum))}
+        ${row('Paid out', pesoR(outNum))}
+        ${row('Expected cash amount', pesoR(expectedCash), true)}
+        ${row('Actual cash amount', pesoR(actualNum))}
+        ${row('Difference', pesoR(difference), true)}
+      </table>
+      <div class="hr"></div>
+      <div class="center title" style="font-size:13px">Sales summary</div>
+      <div class="hr"></div>
+      <table>
+        ${row('Gross sales', pesoR(data.gross), true)}
+        ${row('Refunds', pesoR(0))}
+        ${row('Discounts', pesoR(0))}
+        ${row('Net sales', pesoR(netSales), true)}
+        ${row('Cash', pesoR(data.cash))}
+        ${row(gcashLabel, pesoR(data.gcash))}
+      </table>
+      <div class="hr"></div>
+      <div class="center muted">Cashier: ${user?.name ?? '—'}</div>
+      <div class="center muted">Thank you!</div>
+    `
+    printThermal(html)
+  }
+
   return (
     <div className="space-y-6">
       <section className="rounded-3xl border border-blue-100 bg-gradient-to-br from-blue-600 to-blue-800 p-8 text-white shadow-xl shadow-blue-200/60">
@@ -128,8 +203,29 @@ export function SalesSummaryPage() {
       </section>
 
       <div className="flex flex-wrap gap-2">
-        <button onClick={printSummary} className="flex items-center gap-2 rounded-2xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-700 shadow-sm transition hover:bg-slate-50"><FaPrint /> Print</button>
+        <button onClick={printSalesReceipt} className="flex items-center gap-2 rounded-2xl bg-blue-600 px-3 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-blue-700"><FaReceipt /> Print Sales Receipt</button>
+        <button onClick={printSummary} className="flex items-center gap-2 rounded-2xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-700 shadow-sm transition hover:bg-slate-50"><FaPrint /> Print (A4)</button>
         <button onClick={exportCsv} className="flex items-center gap-2 rounded-2xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-700 shadow-sm transition hover:bg-slate-50"><FaFileExcel /> Export CSV</button>
+      </div>
+
+      {/* Cash count — feeds the printed shift receipt's drawer reconciliation. */}
+      <div className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm shadow-slate-200/70">
+        <h3 className="text-lg font-semibold text-slate-900">Cash Count (for the printed receipt)</h3>
+        <p className="mt-1 text-sm text-slate-500">Enter the drawer figures. Cash payments (₱{data.cash.toLocaleString('en-PH')}) come from recorded orders.</p>
+        <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
+          {[
+            { label: 'Starting cash', value: startingCash, set: setStartingCash },
+            { label: 'Actual cash counted', value: actualCash, set: setActualCash },
+            { label: 'Paid in', value: paidIn, set: setPaidIn },
+            { label: 'Paid out', value: paidOut, set: setPaidOut },
+            { label: 'Cash refunds', value: cashRefunds, set: setCashRefunds },
+          ].map((f) => (
+            <label key={f.label} className="space-y-1">
+              <span className="text-xs font-semibold text-slate-500">{f.label}</span>
+              <input type="number" inputMode="decimal" value={f.value} onChange={(e) => f.set(e.target.value)} placeholder="0" className="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm outline-none focus:border-blue-400" />
+            </label>
+          ))}
+        </div>
       </div>
 
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">

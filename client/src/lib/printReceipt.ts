@@ -101,10 +101,8 @@ export function getPaperSize(): '58mm' | '80mm' {
   }
 }
 
-/** Print one or more receipts in a single job (each separated by a cut line). */
-export function printReceipts(list: ReceiptData[]) {
-  if (list.length === 0) return
-
+/** Render arbitrary receipt-body HTML into the hidden 80/58mm iframe and print it. */
+function renderAndPrint(body: string) {
   const iframe = document.createElement('iframe')
   iframe.style.cssText = 'position:fixed;right:0;bottom:0;width:0;height:0;border:0'
   document.body.appendChild(iframe)
@@ -114,10 +112,6 @@ export function printReceipts(list: ReceiptData[]) {
     iframe.remove()
     return
   }
-
-  const body = list
-    .map((data) => `<div class="receipt">${buildBody(data)}</div>`)
-    .join('<div class="cut">— — — — — — ✂ — — — — — —</div>')
 
   const paper = getPaperSize()
   // Content padding tightened for the narrower 58mm roll.
@@ -166,6 +160,23 @@ export function printReceipts(list: ReceiptData[]) {
   })
 }
 
+/** Print one or more receipts in a single job (each separated by a cut line). */
+export function printReceipts(list: ReceiptData[]) {
+  if (list.length === 0) return
+  const body = list
+    .map((data) => `<div class="receipt">${buildBody(data)}</div>`)
+    .join('<div class="cut">— — — — — — ✂ — — — — — —</div>')
+  renderAndPrint(body)
+}
+
 export function printReceipt(data: ReceiptData) {
   printReceipts([data])
+}
+
+/**
+ * Print arbitrary thermal-receipt HTML (e.g. a shift/sales-summary report).
+ * Available classes: center, muted, title, hr, and table with td.r / td.b.
+ */
+export function printThermal(bodyHtml: string) {
+  renderAndPrint(`<div class="receipt">${bodyHtml}</div>`)
 }
