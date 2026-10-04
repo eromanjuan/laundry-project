@@ -96,9 +96,14 @@ async function run() {
     } catch (e) {
       const code = e.statusCode
       // 404/410 mean the subscription is gone — remove it.
-      if (code === 404 || code === 410) {
+      // 401/403 mean it was made with a different (rotated) VAPID key and can
+      // never work again — the browser must re-subscribe, so remove it too.
+      if (code === 404 || code === 410 || code === 401 || code === 403) {
         await docSnap.ref.delete()
         pruned += 1
+        if (code === 401 || code === 403) {
+          console.warn(`stale VAPID subscription removed for ${sub.jobKey} (${code}) — customer must re-subscribe.`)
+        }
       } else {
         console.warn(`push failed for ${sub.jobKey} (${code || '?'}):`, e.body || e.message)
       }

@@ -13,7 +13,7 @@ import { doc, setDoc } from 'firebase/firestore'
 import { db, isFirebaseConfigured } from './firebase'
 import { trackKey } from './tracking'
 
-export const VAPID_PUBLIC_KEY = 'BF4WUFNsNc_36FuKWyyEEurk7D9GGTYlzurTsPBwtO0GnHJkH0oixX7HSWKcIpBXkK824nVGHvp0HM2mb86wTUo'
+export const VAPID_PUBLIC_KEY = 'BATcQrcMGzS8gZnff2WiOLxa0KCMQ3Mo1EcQ9Ev5796uZwaqglTOEDqhP3irSQUhvymTonTY5XsTo5XCbRGWBVw'
 
 /** True where this browser can do background Web Push. */
 export const pushSupported =
