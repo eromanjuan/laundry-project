@@ -30,16 +30,11 @@ jobs:
         working-directory: push-sync
         run: npm install --no-audit --no-fund
 
-      - name: Seed an expired cycle and run the real sweep
+      - name: Seed an expired cycle
         working-directory: push-sync
         env:
           FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
-          VAPID_PUBLIC_KEY: ${{ secrets.VAPID_PUBLIC_KEY }}
-          VAPID_PRIVATE_KEY: ${{ secrets.VAPID_PRIVATE_KEY }}
-          VAPID_SUBJECT: ${{ secrets.VAPID_SUBJECT }}
-          SITE_URL: https://laundry-project-pos.web.app
         run: |
-          set -euo pipefail
           node -e '
             const admin = require("firebase-admin")
             admin.initializeApp({ credential: admin.credential.cert(JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT)) })
@@ -49,21 +44,27 @@ jobs:
               const shops = await db.collection("shops").limit(1).get()
               if (shops.empty) throw new Error("no shop found")
               const shopId = shops.docs[0].id
-              const id = "#SELFTEST"
               const endsAt = Date.now() - 60_000
               await db.collection("orders").doc("selftest-order").set({
-                id, shopId, customer: "SELF TEST", service: "Self test",
+                id: "#SELFTEST", shopId, customer: "SELF TEST", service: "Self test",
                 status: "Washing", paymentStatus: "Pending", amount: "₱0",
                 washTimerMinutes: 40, washTimerEndsAt: endsAt, washTimerNotifiedAt: null,
                 createdAt: Date.now(),
               })
               console.log("seeded order for shop " + shopId)
-
-              require("./index.js")
+              process.exit(0)
             })().catch((e) => { console.error(e); process.exit(1) })
           '
 
-          sleep 5
+      - name: Run the real push-sync sweep
+        working-directory: push-sync
+        env:
+          FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+          VAPID_PUBLIC_KEY: ${{ secrets.VAPID_PUBLIC_KEY }}
+          VAPID_PRIVATE_KEY: ${{ secrets.VAPID_PRIVATE_KEY }}
+          VAPID_SUBJECT: ${{ secrets.VAPID_SUBJECT }}
+          SITE_URL: https://laundry-project-pos.web.app
+        run: node index.js
 
       - name: Assert the alert fired, then clean up
         working-directory: push-sync
