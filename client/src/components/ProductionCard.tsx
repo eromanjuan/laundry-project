@@ -1,4 +1,5 @@
 import { FaQrcode } from 'react-icons/fa'
+import { receivedStamp } from '../lib/dates'
 
 interface ProductionCardProps {
   job: {
@@ -10,6 +11,8 @@ interface ProductionCardProps {
     totalLaundries: number
     assigned: string
     timeReceived: string
+    /** Local calendar date received (YYYY-MM-DD) — pairs with timeReceived. */
+    date?: string
     estimatedRelease: string
     priority: 'Normal' | 'Express'
     paymentStatus: string
@@ -101,7 +104,7 @@ export function ProductionCard({ job, onShowCode, fields }: ProductionCardProps)
 
       {show('timeline') ? (
         <div className="mt-4 border-t border-slate-100 pt-3 text-xs text-slate-500">
-          <p>Received: {job.timeReceived}</p>
+          <p>Received: {receivedStamp(job)}</p>
           {job.startedAt ? <p>Started: {job.startedAt}</p> : null}
           {job.releasedAt ? <p>Released: {job.releasedAt}</p> : null}
         </div>

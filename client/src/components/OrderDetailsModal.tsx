@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { FaTimes, FaTshirt, FaCheckCircle, FaBoxOpen, FaPlay, FaMoneyBillWave, FaSave, FaWind, FaPrint, FaQrcode } from 'react-icons/fa'
 import type { OrderRecord } from '../data/seeds'
 import type { WithDocId } from '../hooks/useCollection'
+import { receivedStamp } from '../lib/dates'
 import { ImageViewerModal } from './ImageViewerModal'
 
 export interface WasherOption {
@@ -103,7 +104,7 @@ export function OrderDetailsModal({ order, machineAvailable, dryerAvailable, was
           <Row label="Total" value={order.amount} />
           {!isPaid ? <Row label="Paid" value={amountPaid} /> : null}
           {!isPaid ? <Row label="Balance" value={balanceDue} /> : null}
-          <Row label="Received" value={order.timeReceived} />
+          <Row label="Received" value={receivedStamp(order)} />
           {order.startedAt ? <Row label="Started" value={order.startedAt} /> : null}
           {order.releasedAt ? <Row label="Released" value={order.releasedAt} /> : null}
         </div>

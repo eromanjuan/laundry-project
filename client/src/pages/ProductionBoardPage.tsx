@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { FaSearch, FaHistory, FaTimes, FaCopy, FaExternalLinkAlt } from 'react-icons/fa'
+import { FaSearch, FaHistory, FaTimes, FaCopy, FaExternalLinkAlt, FaChevronDown, FaChevronUp, FaSlidersH } from 'react-icons/fa'
 import { ProductionCard, CARD_FIELDS } from '../components/ProductionCard'
 import { ProductionColumn } from '../components/ProductionColumn'
+import { SingleStageView } from '../components/SingleStageView'
 import { OrderDetailsModal, type WasherOption } from '../components/OrderDetailsModal'
 import { ActivityLogModal } from '../components/ActivityLogModal'
 import { RevertStageModal } from '../components/RevertStageModal'
@@ -79,6 +80,8 @@ export function ProductionBoardPage() {
   }
   // Stage filter (workflow columns) + a secondary detail filter.
   const [stageFilter, setStageFilter] = useState('All')
+  // Secondary filters start collapsed so the board isn't buried under controls.
+  const [showMoreFilters, setShowMoreFilters] = useState(false)
   const [serviceFilter, setServiceFilter] = useState('All')
   const [loadTypeFilter, setLoadTypeFilter] = useState('All')
   const [priorityFilter, setPriorityFilter] = useState('All')
@@ -145,6 +148,12 @@ export function ProductionBoardPage() {
     acc[status] = filteredJobs.filter((job) => job.status === status)
     return acc
   }, {} as Record<string, typeof filteredJobs>)
+
+  // How many secondary filters are narrowing the board — surfaced on the toggle
+  // so a hidden filter can't silently hide orders.
+  const activeFilterCount = [serviceFilter, loadTypeFilter, priorityFilter, addOnFilter].filter(
+    (value) => value !== 'All',
+  ).length
 
   const machineAvailable = Boolean(findFreeWasher(machines))
   const dryerAvailable = Boolean(findFreeDryer(machines))
@@ -554,8 +563,35 @@ export function ProductionBoardPage() {
           </div>
         </div>
 
+        {/* Secondary filters collapse behind one control — service, load type,
+            priority, additional option and card fields. */}
+        <div className="mt-4 border-t border-slate-100 pt-4">
+          <button
+            type="button"
+            onClick={() => setShowMoreFilters((open) => !open)}
+            aria-expanded={showMoreFilters}
+            className="flex w-full items-center justify-between gap-3 rounded-xl px-1 py-1 text-left transition hover:bg-slate-50"
+          >
+            <span className="flex items-center gap-2 text-sm font-semibold text-slate-700">
+              <FaSlidersH className="text-slate-400" />
+              More filters
+              {activeFilterCount > 0 ? (
+                <span className="rounded-full bg-blue-600 px-2 py-0.5 text-xs font-semibold text-white">
+                  {activeFilterCount} active
+                </span>
+              ) : null}
+            </span>
+            <span className="flex items-center gap-1 text-xs font-semibold text-slate-500">
+              {showMoreFilters ? 'Hide' : 'Show'}
+              {showMoreFilters ? <FaChevronUp /> : <FaChevronDown />}
+            </span>
+          </button>
+        </div>
+
+        {showMoreFilters ? (
+          <>
         {/* Detail filters — service, load type, priority, additional option. */}
-        <div className="mt-4 grid gap-3 border-t border-slate-100 pt-4 sm:grid-cols-2 xl:grid-cols-4">
+        <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
           <label className="space-y-1">
             <span className="text-xs font-semibold text-slate-500">Service</span>
             <select value={serviceFilter} onChange={(e) => setServiceFilter(e.target.value)} className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm outline-none focus:border-blue-400">
@@ -609,6 +645,8 @@ export function ProductionBoardPage() {
             })}
           </div>
         </div>
+          </>
+        ) : null}
       </div>
 
       {feedback ? (
@@ -624,34 +662,49 @@ export function ProductionBoardPage() {
         </div>
       ) : null}
 
-      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
-        {statuses.map((status) => (
-          <div
-            key={status}
-            onDragOver={(event) => event.preventDefault()}
-            onDrop={() => handleDrop(status)}
-            className="min-h-[480px] rounded-3xl border border-slate-200 bg-slate-50 p-3 shadow-sm shadow-slate-200/70"
-          >
-            <ProductionColumn
-              title={status}
-              count={groupedJobs[status].length}
-              accent={columnAccent[status] ?? 'bg-slate-100 text-slate-700'}
+      {/*
+        View mode follows the stage filter: "All" is the kanban board with every
+        workflow column, while picking a single stage drops the columns entirely
+        and shows just that stage's orders as a flat grid.
+      */}
+      {stageFilter === 'All' ? (
+        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
+          {statuses.map((status) => (
+            <div
+              key={status}
+              onDragOver={(event) => event.preventDefault()}
+              onDrop={() => handleDrop(status)}
+              className="min-h-[480px] rounded-3xl border border-slate-200 bg-slate-50 p-3 shadow-sm shadow-slate-200/70"
             >
-              {groupedJobs[status].map((job) => (
-                <div
-                  key={job.id}
-                  draggable
-                  onDragStart={() => { dragId.current = job.id }}
-                  onClick={() => setSelectedJob(job)}
-                  className="cursor-grab active:cursor-grabbing"
-                >
-                  <ProductionCard job={job} onShowCode={() => showCode(job)} fields={visibleFields} />
-                </div>
-              ))}
-            </ProductionColumn>
-          </div>
-        ))}
-      </div>
+              <ProductionColumn
+                title={status}
+                count={groupedJobs[status].length}
+                accent={columnAccent[status] ?? 'bg-slate-100 text-slate-700'}
+              >
+                {groupedJobs[status].map((job) => (
+                  <div
+                    key={job.id}
+                    draggable
+                    onDragStart={() => { dragId.current = job.id }}
+                    onClick={() => setSelectedJob(job)}
+                    className="cursor-grab active:cursor-grabbing"
+                  >
+                    <ProductionCard job={job} onShowCode={() => showCode(job)} fields={visibleFields} />
+                  </div>
+                ))}
+              </ProductionColumn>
+            </div>
+          ))}
+        </div>
+      ) : (
+        <SingleStageView
+          stage={stageFilter}
+          jobs={groupedJobs[stageFilter] ?? []}
+          fields={visibleFields}
+          onOpen={setSelectedJob}
+          onShowCode={showCode}
+        />
+      )}
 
       <OrderDetailsModal
         order={selectedJob}
