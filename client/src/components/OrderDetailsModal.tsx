@@ -6,7 +6,6 @@ import { receivedStamp } from '../lib/dates'
 import { activeTimer } from '../lib/timers'
 import { useTimerSettings } from '../hooks/useTimerSettings'
 import { TimerBadge } from './TimerBadge'
-import { useNow } from '../hooks/useNow'
 import { useResetOnChange } from '../hooks/useResetOnChange'
 import { TimerLengthField } from './TimerLengthField'
 import { ImageViewerModal } from './ImageViewerModal'
@@ -70,7 +69,6 @@ export function OrderDetailsModal({ order, machineAvailable, dryerAvailable, was
   const { timers: timerDefaults } = useTimerSettings()
   const [washMinutes, setWashMinutes] = useState(timerDefaults.washMinutes)
   const [dryMinutes, setDryMinutes] = useState(timerDefaults.dryMinutes)
-  const now = useNow()
   // Re-seed the modal's local inputs during render rather than in an effect, so
   // opening a different order never briefly shows the previous one's machine
   // and timer length.
@@ -125,7 +123,7 @@ export function OrderDetailsModal({ order, machineAvailable, dryerAvailable, was
           {runningTimer ? (
             <div className="flex items-center justify-between gap-2 rounded-xl bg-slate-50 px-3 py-2">
               <span className="text-sm text-slate-500">Cycle timer</span>
-              <TimerBadge timer={runningTimer} now={now} />
+              <TimerBadge timer={runningTimer} compact />
             </div>
           ) : null}
           {order.startedAt ? <Row label="Started" value={order.startedAt} /> : null}

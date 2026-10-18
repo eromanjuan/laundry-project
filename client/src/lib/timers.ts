@@ -123,6 +123,30 @@ export function timerLabel(timer: OrderTimer, now = Date.now()): string {
   return formatRemaining(left)
 }
 
+/**
+ * How far through the cycle it is, as a percentage 0–100.
+ *
+ * Deliberately *not* rounded: the progress bar renders this directly, and a
+ * whole-number percent on a 40-minute cycle would only change every ~24
+ * seconds, so the bar would sit still and then jump. Callers round for display.
+ *
+ * The bar fills as the cycle runs and pins at 100 once overdue — a bar that
+ * shrank would read as "amount left", which staff misread as the wash getting
+ * shorter.
+ */
+export function elapsedPercent(timer: OrderTimer, now = Date.now()): number {
+  const total = Math.max(1, timer.minutes * 60_000)
+  const elapsed = total - remainingMs(timer, now)
+  if (elapsed <= 0) return 0
+  if (elapsed >= total) return 100
+  return (elapsed / total) * 100
+}
+
+/** The cycle's full length as a label, e.g. "40:00". */
+export function totalLabel(timer: OrderTimer): string {
+  return formatRemaining(Math.max(1, timer.minutes) * 60_000)
+}
+
 /** Clear every timer field for a stage — used when an order leaves that stage. */
 export function clearedTimerFields(stage: TimerStage): Record<string, unknown> {
   const prefix = stage === 'Washing' ? 'wash' : 'dry'

@@ -19,8 +19,6 @@ interface SingleStageViewProps {
   fields: string[]
   onOpen: (job: OrderRecord & WithDocId) => void
   onShowCode: (job: OrderRecord & WithDocId) => void
-  /** Shared clock so every card's countdown ticks together. */
-  now: number
 }
 
 /**
@@ -31,7 +29,7 @@ interface SingleStageViewProps {
  * board would just be one tall column. Cards stay clickable for details and
  * stage changes happen from the order modal.
  */
-export function SingleStageView({ stage, jobs, fields, onOpen, onShowCode, now }: SingleStageViewProps) {
+export function SingleStageView({ stage, jobs, fields, onOpen, onShowCode }: SingleStageViewProps) {
   const chip = accent[stage] ?? 'bg-slate-100 text-slate-700'
 
   return (
@@ -55,7 +53,7 @@ export function SingleStageView({ stage, jobs, fields, onOpen, onShowCode, now }
         <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
           {jobs.map((job) => (
             <div key={job.id} onClick={() => onOpen(job)} className="cursor-pointer">
-              <ProductionCard job={job} onShowCode={() => onShowCode(job)} fields={fields} now={now} />
+              <ProductionCard job={job} onShowCode={() => onShowCode(job)} fields={fields} />
             </div>
           ))}
         </div>

@@ -14,12 +14,14 @@ import {
   activeTimer,
   clampMinutes,
   clearedTimerFields,
+  elapsedPercent,
   formatRemaining,
   isOverdue,
   needsAlert,
   readTimer,
   timerFields,
   timerLabel,
+  totalLabel,
   DEFAULT_TIMER_MINUTES,
   MAX_TIMER_MINUTES,
 } from './src/lib/timers.ts'
@@ -134,6 +136,31 @@ ok('the two patches compose without clobbering', () => {
   const patch = { ...clearedTimerFields('Drying'), ...timerFields('Washing', 40, NOW) }
   assert.equal(patch.dryTimerEndsAt, null)
   assert.equal(patch.washTimerEndsAt, NOW + 40 * 60_000)
+})
+
+console.log('elapsedPercent / totalLabel')
+const cycle = (minutes, endsAt) => ({ stage: 'Washing', minutes, endsAt })
+const pct = (t, n = NOW) => Math.round(elapsedPercent(t, n))
+ok('starts at 0', () => assert.equal(pct(cycle(40, NOW + 40 * 60_000)), 0))
+ok('is halfway at the midpoint', () => assert.equal(pct(cycle(40, NOW + 20 * 60_000)), 50))
+ok('reaches 100 when finished', () => assert.equal(pct(cycle(40, NOW)), 100))
+ok('pins at 100 when overdue', () => assert.equal(pct(cycle(40, NOW - 90 * 60_000)), 100))
+ok('never exceeds 100 or drops below 0', () => {
+  assert.equal(pct(cycle(40, NOW + 999 * 60_000)), 0)
+  assert.equal(pct(cycle(40, NOW - 999 * 60_000)), 100)
+})
+ok('scales to the configured length, not a fixed 40', () => {
+  assert.equal(pct(cycle(15, NOW + 7.5 * 60_000)), 50)
+  assert.equal(pct(cycle(90, NOW + 45 * 60_000)), 50)
+})
+ok('is unrounded, so the bar keeps moving between whole percents', () => {
+  // 13s into a 40-minute cycle is 0.54% — a rounded value would still read 0.
+  const value = elapsedPercent(cycle(40, NOW + 40 * 60_000 - 13_000), NOW)
+  assert.ok(value > 0 && value < 1, `expected a fraction between 0 and 1, got ${value}`)
+})
+ok('totalLabel renders the configured length', () => {
+  assert.equal(totalLabel(cycle(40, NOW)), '40:00')
+  assert.equal(totalLabel(cycle(90, NOW)), '1h 30m')
 })
 
 console.log('id helpers')

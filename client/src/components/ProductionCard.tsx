@@ -38,7 +38,7 @@ const statusColors: Record<string, string> = {
   Ready: 'bg-emerald-100 text-emerald-700',
 }
 
-export function ProductionCard({ job, onShowCode, fields, now }: ProductionCardProps & { now: number }) {
+export function ProductionCard({ job, onShowCode, fields }: ProductionCardProps) {
   const show = (key: string) => !fields || fields.includes(key)
   const showServiceRow = show('service') || show('weight')
   const showDetailRows = show('loads') || show('items') || show('assigned') || showServiceRow
@@ -104,7 +104,7 @@ export function ProductionCard({ job, onShowCode, fields, now }: ProductionCardP
 
       {timer ? (
         <div className="mt-4">
-          <TimerBadge timer={timer} now={now} />
+          <TimerBadge timer={timer} />
         </div>
       ) : null}
 

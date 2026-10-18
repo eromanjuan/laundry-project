@@ -4,7 +4,6 @@ import { ProductionCard } from '../components/ProductionCard'
 import { CARD_FIELDS } from '../lib/cardFields'
 import { ProductionColumn } from '../components/ProductionColumn'
 import { SingleStageView } from '../components/SingleStageView'
-import { useNow } from '../hooks/useNow'
 import { useTimerSettings } from '../hooks/useTimerSettings'
 import { useStaffAlerts } from '../hooks/useStaffAlerts'
 import { clearedTimerFields, timerFields } from '../lib/timers'
@@ -79,8 +78,6 @@ export function ProductionBoardPage() {
   const { payment } = usePaymentSettings()
   const { timers } = useTimerSettings()
   const { notify } = useStaffAlerts()
-  // One shared clock for every countdown on the board.
-  const now = useNow()
   const [showLog, setShowLog] = useState(false)
   const [query, setQuery] = useState('')
 
@@ -725,7 +722,7 @@ export function ProductionBoardPage() {
                     onClick={() => setSelectedJob(job)}
                     className="cursor-grab active:cursor-grabbing"
                   >
-                    <ProductionCard job={job} onShowCode={() => showCode(job)} fields={visibleFields} now={now} />
+                    <ProductionCard job={job} onShowCode={() => showCode(job)} fields={visibleFields} />
                   </div>
                 ))}
               </ProductionColumn>
@@ -737,7 +734,6 @@ export function ProductionBoardPage() {
           stage={stageFilter}
           jobs={groupedJobs[stageFilter] ?? []}
           fields={visibleFields}
-          now={now}
           onOpen={setSelectedJob}
           onShowCode={showCode}
         />
