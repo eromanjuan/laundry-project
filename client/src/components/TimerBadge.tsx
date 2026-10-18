@@ -1,22 +1,5 @@
-import { useEffect, useState } from 'react'
 import { FaHourglassHalf } from 'react-icons/fa'
 import { isOverdue, timerLabel, type OrderTimer } from '../lib/timers'
-
-/**
- * A single shared clock for every countdown on screen.
- *
- * Each badge asking React for its own interval would mean one timer per card;
- * one 15-second tick for the whole board keeps the re-renders aligned and cheap.
- * Returns the current epoch ms.
- */
-export function useNow(intervalMs = 15_000): number {
-  const [now, setNow] = useState(() => Date.now())
-  useEffect(() => {
-    const id = window.setInterval(() => setNow(Date.now()), intervalMs)
-    return () => window.clearInterval(id)
-  }, [intervalMs])
-  return now
-}
 
 /**
  * Countdown chip for an order card.

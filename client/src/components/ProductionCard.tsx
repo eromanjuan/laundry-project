@@ -30,19 +30,6 @@ interface ProductionCardProps {
 }
 
 /** Toggleable card fields, in display order. */
-export const CARD_FIELDS: Array<{ key: string; label: string }> = [
-  { key: 'customer', label: 'Customer' },
-  { key: 'service', label: 'Service' },
-  { key: 'weight', label: 'Weight' },
-  { key: 'loads', label: 'Loads' },
-  { key: 'items', label: 'Items' },
-  { key: 'assigned', label: 'Assigned' },
-  { key: 'timeline', label: 'Timeline' },
-  { key: 'priority', label: 'Priority' },
-  { key: 'payment', label: 'Payment' },
-  { key: 'status', label: 'Status' },
-]
-
 const statusColors: Record<string, string> = {
   Received: 'bg-blue-100 text-blue-700',
   Washing: 'bg-amber-100 text-amber-700',

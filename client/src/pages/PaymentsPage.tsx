@@ -1,7 +1,8 @@
 import { useMemo, useState } from 'react'
 import { FaSearch, FaSlidersH } from 'react-icons/fa'
 import { PaymentHistoryPanel } from '../components/PaymentHistoryPanel'
-import { PaymentTable, PAYMENT_FIELDS, type PaymentRow } from '../components/PaymentTable'
+import { PaymentTable } from '../components/PaymentTable'
+import { PAYMENT_FIELDS, type PaymentRow } from '../lib/paymentFields'
 import { ReceivePaymentModal } from '../components/ReceivePaymentModal'
 import { SummaryStat } from '../components/SummaryStat'
 import { useCollection, type WithDocId } from '../hooks/useCollection'
@@ -11,7 +12,7 @@ import { useBusiness } from '../hooks/useBusiness'
 import { printReceipt } from '../lib/printReceipt'
 import { publishStatus } from '../lib/tracking'
 import { buildOrderReceipt, trackQrDataUrl } from '../lib/receipts'
-import { seedActivity, seedOrders, todayISO, nowStamp, type ActivityRecord, type OrderRecord } from '../data/seeds'
+import { seedActivity, seedOrders, todayISO, nowStamp, newRecordId, type ActivityRecord, type OrderRecord } from '../data/seeds'
 
 const filters = ['All', 'Paid', 'Unpaid', 'Today', 'This Week']
 
@@ -95,7 +96,7 @@ export function PaymentsPage() {
     void update(order, { paymentStatus: 'Paid', amountPaid: order.amount, balance: '₱0' })
     void publishStatus(order.id, order.status, { paymentStatus: 'Paid', balance: '₱0' })
     void addActivity({
-      id: `${Date.now()}-${Math.round(Math.random() * 1e6)}`,
+      id: newRecordId(),
       action: `${order.id}: payment received (${order.amount})`,
       user: user?.name ?? 'Unknown',
       at: nowStamp(),

@@ -10,7 +10,7 @@ import { useLgConnection } from '../hooks/useLgConnection'
 import { useLgStatus } from '../hooks/useLgStatus'
 import { useAuth } from '../context/AuthContext'
 import { useShop } from '../context/ShopContext'
-import { nextId, nowStamp, seedActivity, seedMachines, seedOrders, type ActivityRecord, type MachineRecord, type OrderRecord } from '../data/seeds'
+import { nextId, nowStamp, newRecordId, seedActivity, seedMachines, seedOrders, type ActivityRecord, type MachineRecord, type OrderRecord } from '../data/seeds'
 import { printReport } from '../lib/exports'
 
 function statusTone(status: MachineRecord['status']) {
@@ -48,7 +48,7 @@ export function MachineMonitoringPage() {
   const base = shop ? `/${shop.slug}` : ''
 
   const logActivity = (action: string) =>
-    void addActivity({ id: `${Date.now()}-${Math.round(Math.random() * 1e6)}`, action, user: user?.name ?? 'Unknown', at: nowStamp() })
+    void addActivity({ id: newRecordId(), action, user: user?.name ?? 'Unknown', at: nowStamp() })
   const { connection: lg } = useLgConnection()
   const lgStatus = useLgStatus()
 
@@ -98,7 +98,9 @@ export function MachineMonitoringPage() {
   }
 
   const lgActive = lg.connected && lg.enabled
-  const lgMachines = lgStatus.machines ?? []
+  // Memoised so the `?? []` fallback is a stable reference — otherwise a fresh
+  // empty array each render would invalidate the stats memo below.
+  const lgMachines = useMemo(() => lgStatus.machines ?? [], [lgStatus.machines])
   const usingLg = lgMachines.length > 0
 
   // The top counts reflect the REAL LG machines when connected (mapped:
@@ -159,7 +161,7 @@ export function MachineMonitoringPage() {
       if ((machine.cycles || 0) !== 0) void update(machine, { cycles: 0 })
     })
     void addActivity({
-      id: `${Date.now()}-${Math.round(Math.random() * 1e6)}`,
+      id: newRecordId(),
       action: `Cleared all machine cycle counts`,
       user: user?.name ?? 'Unknown',
       at: nowStamp(),

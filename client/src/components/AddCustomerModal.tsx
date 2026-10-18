@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import { FaTimes } from 'react-icons/fa'
 
 interface AddCustomerModalProps {
@@ -28,11 +28,13 @@ const initialValues: CustomerFormValues = {
 export function AddCustomerModal({ isOpen, onClose, onSubmit }: AddCustomerModalProps) {
   const [form, setForm] = useState<CustomerFormValues>(initialValues)
 
-  useEffect(() => {
-    if (!isOpen) {
-      setForm(initialValues)
-    }
-  }, [isOpen])
+  // Clear the form when the dialog closes, during render rather than in an effect
+  // so it never briefly shows the previous customer's entries.
+  const [wasOpen, setWasOpen] = useState(isOpen)
+  if (wasOpen !== isOpen) {
+    setWasOpen(isOpen)
+    if (!isOpen) setForm(initialValues)
+  }
 
   if (!isOpen) return null
 

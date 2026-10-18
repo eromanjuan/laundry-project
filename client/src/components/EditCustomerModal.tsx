@@ -1,4 +1,4 @@
-import { useEffect, useState, type FormEvent } from 'react'
+import { useState, type FormEvent } from 'react'
 import { FaTimes } from 'react-icons/fa'
 import type { CustomerRecord } from '../data/seeds'
 
@@ -21,18 +21,20 @@ export function EditCustomerModal({ isOpen, onClose, onSave, customer }: EditCus
     outstandingBalance: '',
   })
 
-  useEffect(() => {
-    if (customer) {
-      setForm({
-        name: customer.name,
-        mobile: customer.mobile,
-        address: customer.address,
-        status: customer.status,
-        loyaltyPoints: customer.loyaltyPoints,
-        outstandingBalance: customer.outstandingBalance,
-      })
-    }
-  }, [customer])
+  // Load the edited customer's values during render rather than in an effect, so
+  // the form is never painted with the previous customer's entries.
+  const [loadedId, setLoadedId] = useState(customer?.id ?? '')
+  if (customer && loadedId !== customer.id) {
+    setLoadedId(customer.id)
+    setForm({
+      name: customer.name,
+      mobile: customer.mobile,
+      address: customer.address,
+      status: customer.status,
+      loyaltyPoints: customer.loyaltyPoints,
+      outstandingBalance: customer.outstandingBalance,
+    })
+  }
 
   if (!isOpen || !customer) return null
 

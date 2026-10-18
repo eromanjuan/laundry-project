@@ -1,9 +1,10 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { FaSearch, FaHistory, FaTimes, FaCopy, FaExternalLinkAlt, FaChevronDown, FaChevronUp, FaSlidersH } from 'react-icons/fa'
-import { ProductionCard, CARD_FIELDS } from '../components/ProductionCard'
+import { ProductionCard } from '../components/ProductionCard'
+import { CARD_FIELDS } from '../lib/cardFields'
 import { ProductionColumn } from '../components/ProductionColumn'
 import { SingleStageView } from '../components/SingleStageView'
-import { useNow } from '../components/TimerBadge'
+import { useNow } from '../hooks/useNow'
 import { useTimerSettings } from '../hooks/useTimerSettings'
 import { useStaffAlerts } from '../hooks/useStaffAlerts'
 import { clearedTimerFields, timerFields } from '../lib/timers'
@@ -19,7 +20,7 @@ import { useBranding } from '../hooks/useBranding'
 import { useBusiness } from '../hooks/useBusiness'
 import { usePricing } from '../hooks/usePricing'
 import { usePaymentSettings } from '../hooks/usePaymentSettings'
-import { seedActivity, seedMachines, seedOrders, todayISO, nowStamp, type ActivityRecord, type MachineRecord, type OrderRecord } from '../data/seeds'
+import { seedActivity, seedMachines, seedOrders, todayISO, nowStamp, newRecordId, type ActivityRecord, type MachineRecord, type OrderRecord } from '../data/seeds'
 import { findFreeWasher, findFreeDryer, oldestPending } from '../lib/machines'
 import { publishStatus, trackUrl, trackKey } from '../lib/tracking'
 import type { PaymentProof } from '../lib/paymentProof'
@@ -84,7 +85,7 @@ export function ProductionBoardPage() {
   const [query, setQuery] = useState('')
 
   const logActivity = (action: string) => {
-    void addActivity({ id: `${Date.now()}-${Math.round(Math.random() * 1e6)}`, action, user: user?.name ?? 'Unknown', at: nowStamp() })
+    void addActivity({ id: newRecordId(), action, user: user?.name ?? 'Unknown', at: nowStamp() })
   }
   // Stage filter (workflow columns) + a secondary detail filter.
   const [stageFilter, setStageFilter] = useState('All')

@@ -3,6 +3,7 @@ import { doc, onSnapshot } from 'firebase/firestore'
 import { httpsCallable } from 'firebase/functions'
 import { db, functions, isFirebaseConfigured } from '../lib/firebase'
 import { useShopId } from '../context/ShopContext'
+import { useResetOnChange } from './useResetOnChange'
 
 /** Washer or dryer availability counts for one store (from LG's /status). */
 export interface LgMachineCounts {
@@ -45,11 +46,11 @@ export function useLgStatus() {
   const shopId = useShopId()
   const [status, setStatus] = useState<LgStatusDoc>({ stores: [] })
 
+  // A shop switch must not leave the previous shop's machines on screen.
+  useResetOnChange(shopId ?? '', () => setStatus({ stores: [] }))
+
   useEffect(() => {
-    if (!isFirebaseConfigured || !db || !shopId) {
-      setStatus({ stores: [] })
-      return
-    }
+    if (!isFirebaseConfigured || !db || !shopId) return
     const unsubscribe = onSnapshot(
       doc(db, 'shops', shopId, 'settings', 'lgStatus'),
       (snapshot) => {

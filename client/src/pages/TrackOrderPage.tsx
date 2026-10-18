@@ -58,7 +58,10 @@ export function TrackOrderPage() {
   )
 
   const [record, setRecord] = useState<TrackingDoc | null>(null)
-  const [state, setState] = useState<'loading' | 'ready' | 'notfound' | 'offline'>('loading')
+  const [liveState, setState] = useState<'loading' | 'ready' | 'notfound'>('loading')
+  // Without Firebase there is nothing to track against, so the page is always
+  // "offline" — derived here instead of pushed into state by an effect.
+  const state = isFirebaseConfigured && db ? liveState : 'offline'
   // Legacy receipt URLs don't carry the shop; the tracking doc does, so adopt it.
   const [docShopId, setDocShopId] = useState('')
   const shopId = routeShopId || docShopId
@@ -133,10 +136,7 @@ export function TrackOrderPage() {
   }, [state, notify])
 
   useEffect(() => {
-    if (!isFirebaseConfigured || !db) {
-      setState('offline')
-      return
-    }
+    if (!isFirebaseConfigured || !db) return
     const unsubscribe = onSnapshot(
       doc(db, 'tracking', docId),
       (snap) => {

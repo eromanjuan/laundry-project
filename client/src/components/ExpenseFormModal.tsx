@@ -1,4 +1,5 @@
-import { useEffect, useState, type FormEvent } from 'react'
+import { useState, type FormEvent } from 'react'
+import { referenceCode } from '../data/seeds'
 import type { ExpenseRow } from './ExpenseTable'
 
 interface ExpenseFormModalProps {
@@ -41,13 +42,19 @@ const initialForm = {
 export function ExpenseFormModal({ isOpen, onClose, onSave, mode, row }: ExpenseFormModalProps) {
   const [form, setForm] = useState(initialForm)
 
-  useEffect(() => {
+  // Seed the form during render rather than in an effect, so it is never painted
+  // with the previously edited row. Opening the "add" dialog mints a fresh
+  // reference number each time.
+  const formKey = `${row?.id ?? 'new'}|${isOpen}`
+  const [seededKey, setSeededKey] = useState(formKey)
+  if (seededKey !== formKey) {
+    setSeededKey(formKey)
     if (row) {
       setForm({ ...row })
-    } else {
-      setForm({ ...initialForm, id: `EXP-${Math.floor(1000 + Math.random() * 9000)}` })
+    } else if (isOpen) {
+      setForm({ ...initialForm, id: referenceCode('EXP') })
     }
-  }, [row, isOpen])
+  }
 
   if (!isOpen) return null
 

@@ -12,7 +12,7 @@ import { useBranding } from '../hooks/useBranding'
 import { useBusiness } from '../hooks/useBusiness'
 import { useAuth } from '../context/AuthContext'
 import { loadsForWeight } from '../data/pricing'
-import { nextId, todayISO, nowStamp, seedActivity, seedCustomers, seedOrders, type ActivityRecord, type CustomerRecord, type OrderRecord } from '../data/seeds'
+import { nextId, todayISO, nowStamp, newRecordId, seedActivity, seedCustomers, seedOrders, type ActivityRecord, type CustomerRecord, type OrderRecord } from '../data/seeds'
 import { printReceipt, printReceipts, receiptDocType, type ReceiptData, type ReceiptItem, type ReceiptLine } from '../lib/printReceipt'
 import { trackUrl, publishStatus } from '../lib/tracking'
 
@@ -340,7 +340,7 @@ export function JobOrdersPage() {
     })
 
     void addActivity({
-      id: `${Date.now()}-${Math.round(Math.random() * 1e6)}`,
+      id: newRecordId(),
       action: `${nextJobNumber}: job order received (Pending) — ${activeCustomer.name}, ${items.length} item(s), ${peso(grandTotal)}`,
       user: user?.name ?? 'Unknown',
       at: nowStamp(),

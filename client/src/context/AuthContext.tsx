@@ -26,6 +26,7 @@ import { app, db, isFirebaseConfigured, firebaseConfig } from '../lib/firebase'
 import { MASTER_UID, DEV_SHOP } from '../lib/tenant'
 import { seedUsers, slugify, RESERVED_SLUGS, SHOP_ROLES, type UserRecord, type ShopRecord, type ShopRole } from '../data/seeds'
 import type { WithDocId } from '../hooks/useCollection'
+import { useResetOnChange } from '../hooks/useResetOnChange'
 
 export type { UserRole, ShopRole, ShopStatus, ShopRecord } from '../data/seeds'
 export type AuthUser = UserRecord & WithDocId
@@ -151,22 +152,26 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [])
 
   // 2. Subscribe to the signed-in user's profile document.
-  useEffect(() => {
-    if (!isFirebaseConfigured || !db) {
+  // Reset during render (not in an effect) when the target changes, so the
+  // guards never see one render with the previous user's profile still loaded.
+  // Without Firebase there is no profile to load. With Firebase but no
+  // signed-in user we stay in the loading state rather than treating the
+  // absent `fbUser` as "no profile" — otherwise the render between the session
+  // arriving and the profile snapshot would bounce guards (e.g. a master
+  // deep-linking to /admin/settings would be sent back to /admin).
+  const firebaseLive = Boolean(isFirebaseConfigured && db)
+  useResetOnChange(`${fbUser?.uid ?? ''}|${firebaseLive}`, () => {
+    if (!firebaseLive) {
       setProfile(null)
       setProfileLoaded(true)
-      return
-    }
-    // Auth is still resolving: remain in the loading state instead of treating
-    // the absent `fbUser` as "no profile". Otherwise the render between the
-    // session arriving and the profile snapshot would bounce guards (e.g. a
-    // master deep-linking to /admin/settings would be sent back to /admin).
-    if (!fbUser) {
+    } else {
       setProfile(null)
       setProfileLoaded(false)
-      return
     }
-    setProfileLoaded(false)
+  })
+
+  useEffect(() => {
+    if (!isFirebaseConfigured || !db || !fbUser) return
     const unsubscribe = onSnapshot(
       doc(db, 'users', fbUser.uid),
       (snapshot) => {
@@ -208,13 +213,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   //     platform administrator when their profile role is Master OR their uid
   //     is in the `platformAdmins` allow-list. Promoted shop accounts keep
   //     their shop role, so the allow-list — not the role — is authoritative.
-  useEffect(() => {
-    if (!isFirebaseConfigured || !db || !fbUser) {
-      setIsPlatformAdmin(false)
-      setPlatformAdminLoaded(false)
-      return
-    }
+  useResetOnChange(`${fbUser?.uid ?? ''}|${firebaseLive}`, () => {
+    setIsPlatformAdmin(false)
     setPlatformAdminLoaded(false)
+  })
+
+  useEffect(() => {
+    if (!isFirebaseConfigured || !db || !fbUser) return
     const unsubscribe = onSnapshot(
       doc(db, 'platformAdmins', fbUser.uid),
       (snapshot) => {
@@ -236,11 +241,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   // 3c. The primary master's row is synthesized from its profile in effect 6.
 
   // 4. Load the member's shop profile.
+  useResetOnChange(`${profile?.shopId ?? ''}|${firebaseLive}`, () => setShop(null))
+
   useEffect(() => {
-    if (!isFirebaseConfigured || !db || !profile?.shopId) {
-      setShop(null)
-      return
-    }
+    if (!isFirebaseConfigured || !db || !profile?.shopId) return
     const unsubscribe = onSnapshot(
       doc(db, 'shops', profile.shopId),
       (snapshot) => setShop(snapshot.exists() ? ({ ...(snapshot.data() as ShopRecord), id: snapshot.id }) : null),
@@ -254,11 +258,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   // A platform administrator is either a dedicated master (role Master) or a
   // promoted shop account present in the `platformAdmins` allow-list.
   const isMaster = profile?.role === 'Master' || isPlatformAdmin
+  useResetOnChange(`${profile?.shopId ?? ''}|${isAdmin}|${firebaseLive}`, () => setStaff([]))
   useEffect(() => {
-    if (!isFirebaseConfigured || !db || !profile?.shopId || !isAdmin) {
-      setStaff([])
-      return
-    }
+    if (!isFirebaseConfigured || !db || !profile?.shopId || !isAdmin) return
     const unsubscribe = onSnapshot(
       query(collection(db, 'users'), where('shopId', '==', profile.shopId)),
       (snapshot) => setStaff(snapshot.docs.map((entry) => ({ ...(entry.data() as UserRecord), _docId: entry.id }))),
@@ -267,11 +269,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return unsubscribe
   }, [profile?.shopId, isAdmin])
 
+  useResetOnChange(`${isMaster}|${firebaseLive}`, () => setAllShops([]))
   useEffect(() => {
-    if (!isFirebaseConfigured || !db || !isMaster) {
-      setAllShops([])
-      return
-    }
+    if (!isFirebaseConfigured || !db || !isMaster) return
     const unsubscribe = onSnapshot(
       collection(db, 'shops'),
       (snapshot) => setAllShops(snapshot.docs.map((entry) => ({ ...(entry.data() as ShopRecord), id: entry.id }))),
@@ -283,11 +283,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   // 6. Load the platform-administrator allow-list (masters only). The primary
   //    master is always shown, synthesized from its profile when it has no
   //    explicit allow-list entry.
+  useResetOnChange(`${isMaster}|${firebaseLive}`, () => setPlatformAdmins([]))
   useEffect(() => {
-    if (!isFirebaseConfigured || !db || !isMaster) {
-      setPlatformAdmins([])
-      return
-    }
+    if (!isFirebaseConfigured || !db || !isMaster) return
     const firestore = db
     let cancelled = false
     const unsubscribe = onSnapshot(

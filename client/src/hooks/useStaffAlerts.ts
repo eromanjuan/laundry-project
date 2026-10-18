@@ -14,6 +14,7 @@ import { db, isFirebaseConfigured } from '../lib/firebase'
 import { useShopId } from '../context/ShopContext'
 import { useAuth } from '../context/AuthContext'
 import type { WithDocId } from './useCollection'
+import { useResetOnChange } from './useResetOnChange'
 
 /** What an alert is about. */
 export type StaffAlertKind = 'timer-done' | 'order-change'
@@ -68,11 +69,11 @@ export function useStaffAlerts() {
   const uid = user?.uid ?? ''
   const [alerts, setAlerts] = useState<StaffAlertDoc[]>([])
 
+  // Never show the previous shop's alerts under the new shop's name.
+  useResetOnChange(shopId ?? '', () => setAlerts([]))
+
   useEffect(() => {
-    if (!isFirebaseConfigured || !db || !shopId) {
-      setAlerts([])
-      return
-    }
+    if (!isFirebaseConfigured || !db || !shopId) return
     const unsubscribe = onSnapshot(
       query(collection(db, 'staffAlerts'), where('shopId', '==', shopId)),
       (snapshot) => {

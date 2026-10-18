@@ -11,7 +11,7 @@ import { useBusiness } from '../hooks/useBusiness'
 import { printReceipt } from '../lib/printReceipt'
 import { publishStatus } from '../lib/tracking'
 import { buildOrderReceipt, trackQrDataUrl } from '../lib/receipts'
-import { seedActivity, seedCustomers, seedOrders, nowStamp, type ActivityRecord, type CustomerRecord, type OrderRecord } from '../data/seeds'
+import { seedActivity, seedCustomers, seedOrders, nowStamp, newRecordId, type ActivityRecord, type CustomerRecord, type OrderRecord } from '../data/seeds'
 
 const filters = ['All', 'Ready', 'Unpaid', 'Released', 'In Process']
 const statusRank: Record<string, number> = { Ready: 0, Claimed: 1, Washing: 2, Pending: 3 }
@@ -122,7 +122,7 @@ export function ClaimLaundryPage() {
   const orderById = (id: string) => orders.find((entry) => entry.id === id)
 
   const logActivity = (action: string) => {
-    void addActivity({ id: `${Date.now()}-${Math.round(Math.random() * 1e6)}`, action, user: user?.name ?? 'Unknown', at: nowStamp() })
+    void addActivity({ id: newRecordId(), action, user: user?.name ?? 'Unknown', at: nowStamp() })
   }
 
   const rows = useMemo(() => {

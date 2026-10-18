@@ -7,6 +7,7 @@ import { useBranding, fileToResizedDataUrl } from '../hooks/useBranding'
 import { useBusiness } from '../hooks/useBusiness'
 import { usePaymentSettings } from '../hooks/usePaymentSettings'
 import { useTimerSettings } from '../hooks/useTimerSettings'
+import { useResetOnChange } from '../hooks/useResetOnChange'
 import { clampMinutes, MAX_TIMER_MINUTES } from '../lib/timers'
 import { useLgConnection } from '../hooks/useLgConnection'
 import { useLgStatus, syncLgNow } from '../hooks/useLgStatus'
@@ -179,7 +180,9 @@ export function SettingsPage() {
   const { timers: timerSettings, save: saveTimers } = useTimerSettings()
   const [timerForm, setTimerForm] = useState({ washMinutes: timerSettings.washMinutes, dryMinutes: timerSettings.dryMinutes })
   const [timersSaved, setTimersSaved] = useState(false)
-  useEffect(() => setTimerForm({ washMinutes: timerSettings.washMinutes, dryMinutes: timerSettings.dryMinutes }), [timerSettings.washMinutes, timerSettings.dryMinutes])
+  useResetOnChange(`${timerSettings.washMinutes}|${timerSettings.dryMinutes}`, () =>
+    setTimerForm({ washMinutes: timerSettings.washMinutes, dryMinutes: timerSettings.dryMinutes }),
+  )
   const handleSaveTimers = () => {
     void saveTimers(timerForm)
     setTimersSaved(true)
@@ -197,9 +200,11 @@ export function SettingsPage() {
   const [lgError, setLgError] = useState('')
   const lgStatus = useLgStatus()
 
-  useEffect(() => {
+  const [prevLg, setPrevLg] = useState(lg)
+  if (prevLg !== lg) {
+    setPrevLg(lg)
     setLgForm({ email: lg.email, password: lg.password, region: lg.region })
-  }, [lg])
+  }
 
   // Save the LG credentials so the sync job (GitHub Actions) can log in. The
   // scheduled job writes live status to Firestore within a few minutes; if an
@@ -240,7 +245,9 @@ export function SettingsPage() {
     await saveLg({ ...lg, enabled: false, connected: false })
   }
 
-  useEffect(() => {
+  const [prevBusiness, setPrevBusiness] = useState(business)
+  if (prevBusiness !== business) {
+    setPrevBusiness(business)
     setSettings((current) => ({
       ...current,
       businessName: business.name,
@@ -250,7 +257,7 @@ export function SettingsPage() {
       tin: business.tin,
       footerMessage: business.footer,
     }))
-  }, [business])
+  }
 
   const handleSaveConfig = () => {
     void saveBusiness({
@@ -310,7 +317,13 @@ export function SettingsPage() {
     event.target.value = ''
   }
 
-  useEffect(() => setGcashForm(gcashSettings), [gcashSettings])
+  // Re-seed each settings form from the loaded document during render rather than
+  // in an effect, so the inputs are never painted showing the previous document.
+  const [prevGcash, setPrevGcash] = useState(gcashSettings)
+  if (prevGcash !== gcashSettings) {
+    setPrevGcash(gcashSettings)
+    setGcashForm(gcashSettings)
+  }
 
   const handleGcashQrUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0]
@@ -332,7 +345,11 @@ export function SettingsPage() {
   const [priceForm, setPriceForm] = useState(pricing)
   const [pricingSaved, setPricingSaved] = useState(false)
 
-  useEffect(() => setPriceForm(pricing), [pricing])
+  const [prevPricing, setPrevPricing] = useState(pricing)
+  if (prevPricing !== pricing) {
+    setPrevPricing(pricing)
+    setPriceForm(pricing)
+  }
 
   type ItemKey = 'services' | 'addOns' | 'products'
 

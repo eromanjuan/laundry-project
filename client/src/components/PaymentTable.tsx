@@ -1,30 +1,8 @@
 import { FaEye, FaMoneyBillWave, FaPrint } from 'react-icons/fa'
+import { PAYMENT_FIELDS, type PaymentRow } from '../lib/paymentFields'
 
-export interface PaymentRow {
-  orNumber: string
-  jobNumber: string
-  customer: string
-  amountDue: string
-  amountPaid: string
-  balance: string
-  paymentMethod: string
-  paymentDate: string
-  cashier: string
-  status: 'Paid' | 'Partial' | 'Unpaid'
-}
-
-export const PAYMENT_FIELDS: Array<{ key: keyof PaymentRow; label: string }> = [
-  { key: 'orNumber', label: 'OR Number' },
-  { key: 'jobNumber', label: 'Job Number' },
-  { key: 'customer', label: 'Customer' },
-  { key: 'amountDue', label: 'Amount Due' },
-  { key: 'amountPaid', label: 'Amount Paid' },
-  { key: 'balance', label: 'Balance' },
-  { key: 'paymentMethod', label: 'Payment Method' },
-  { key: 'paymentDate', label: 'Payment Date' },
-  { key: 'cashier', label: 'Cashier' },
-  { key: 'status', label: 'Status' },
-]
+// Re-exported so existing importers of the row type keep working.
+export type { PaymentRow }
 
 interface PaymentTableProps {
   rows: PaymentRow[]

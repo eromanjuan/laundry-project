@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { doc, onSnapshot, setDoc } from 'firebase/firestore'
 import { db, isFirebaseConfigured } from '../lib/firebase'
 import { useShopId, useShop } from '../context/ShopContext'
+import { useResetOnChange } from './useResetOnChange'
 import defaultLogo from '../assets/brand-logo.png'
 
 /**
@@ -19,11 +20,11 @@ export function useBranding(explicitShopId?: string) {
   const shopId = explicitShopId ?? contextShopId
   const [logoUrl, setLogoUrl] = useState<string>(defaultLogo)
 
+  // Don't show the previous shop's logo while the new one loads.
+  useResetOnChange(shopId ?? '', () => setLogoUrl(defaultLogo))
+
   useEffect(() => {
-    if (!isFirebaseConfigured || !db || !shopId) {
-      setLogoUrl(defaultLogo)
-      return
-    }
+    if (!isFirebaseConfigured || !db || !shopId) return
     const unsubscribe = onSnapshot(
       doc(db, 'shops', shopId, 'settings', 'branding'),
       (snapshot) => {

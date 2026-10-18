@@ -190,6 +190,30 @@ export function nowStamp() {
   })
 }
 
+let recordCounter = 0
+
+/**
+ * Short human-facing reference for a record created client-side, e.g. "EXP-4821".
+ *
+ * Lives here rather than inline in components so the impure call stays out of
+ * render (the React compiler rejects `Math.random()` during a render pass).
+ */
+export function referenceCode(prefix: string): string {
+  return `${prefix}-${Math.floor(1000 + Math.random() * 9000)}`
+}
+
+/**
+ * Id for a record created client-side (activity log lines, for example).
+ *
+ * Time + a per-tab counter + a little randomness, so two records created in the
+ * same millisecond on different tabs still get distinct ids. Lives here rather
+ * than inline in components so the impure calls stay out of render.
+ */
+export function newRecordId(): string {
+  recordCounter += 1
+  return `${Date.now().toString(36)}-${recordCounter.toString(36)}-${Math.random().toString(36).slice(2, 8)}`
+}
+
 export interface ClaimRecord {
   id: string
   customer: string

@@ -3,6 +3,7 @@ import { doc, onSnapshot, setDoc } from 'firebase/firestore'
 import { db, isFirebaseConfigured } from '../lib/firebase'
 import { useShopId } from '../context/ShopContext'
 import { defaultPricing, type PricingConfig } from '../data/pricing'
+import { useResetOnChange } from './useResetOnChange'
 
 /**
  * Realtime binding to the active shop's `shops/{shopId}/settings/pricing`
@@ -13,13 +14,17 @@ export function usePricing() {
   const shopId = useShopId()
   const [pricing, setPricing] = useState<PricingConfig>(defaultPricing)
   const [loading, setLoading] = useState<boolean>(isFirebaseConfigured && Boolean(shopId))
+  const live = Boolean(isFirebaseConfigured && db && shopId)
+
+  // Switching shops must not leave the previous shop's prices on screen while
+  // the new document loads.
+  useResetOnChange(`${shopId ?? ''}|${live ? 'live' : 'local'}`, () => {
+    setPricing(defaultPricing)
+    setLoading(live)
+  })
 
   useEffect(() => {
-    if (!isFirebaseConfigured || !db || !shopId) {
-      setLoading(false)
-      return
-    }
-    setLoading(true)
+    if (!isFirebaseConfigured || !db || !shopId) return
     const unsubscribe = onSnapshot(
       doc(db, 'shops', shopId, 'settings', 'pricing'),
       (snapshot) => {

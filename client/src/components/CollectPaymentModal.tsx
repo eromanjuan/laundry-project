@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import { FaTimes, FaMoneyBillWave, FaQrcode } from 'react-icons/fa'
 import type { PaymentSettings } from '../hooks/usePaymentSettings'
 
@@ -33,14 +33,18 @@ export function CollectPaymentModal({ isOpen, due, label, gcash, onClose, onConf
   const [gcashInput, setGcashInput] = useState('')
   const [error, setError] = useState('')
 
-  useEffect(() => {
+  // Start every collection from a clean slate, during render rather than in an
+  // effect so the fields never flash the previous order's amounts.
+  const [wasOpen, setWasOpen] = useState(isOpen)
+  if (wasOpen !== isOpen) {
+    setWasOpen(isOpen)
     if (isOpen) {
       setMode('Cash')
       setCashInput('')
       setGcashInput('')
       setError('')
     }
-  }, [isOpen])
+  }
 
   if (!isOpen) return null
 

@@ -22,11 +22,23 @@ export function orderDate(order: DatedOrder): string {
   return ''
 }
 
-/** "Oct 18, 2026" for a YYYY-MM-DD string, or '' when it can't be read. */
+/**
+ * "Oct 18, 2026" for a YYYY-MM-DD string, or '' when it can't be read.
+ *
+ * The round-trip check matters: `new Date(2026, 12, 40)` does not throw, it
+ * silently rolls over to a real but wrong day. Comparing the constructed date
+ * back to the parts rejects "2026-13-40" and "2026-02-31" instead of filing an
+ * order under a plausible-looking wrong date.
+ */
 function dateLabel(iso: string): string {
-  const [y, m, d] = iso.split('-').map(Number)
-  if (!y || !m || !d) return ''
-  return new Date(y, m - 1, d).toLocaleDateString([], {
+  const parts = iso.split('-')
+  if (parts.length !== 3) return ''
+  const [y, m, d] = parts.map(Number)
+  if (!Number.isInteger(y) || !Number.isInteger(m) || !Number.isInteger(d)) return ''
+  if (m < 1 || m > 12 || d < 1 || d > 31) return ''
+  const date = new Date(y, m - 1, d)
+  if (date.getFullYear() !== y || date.getMonth() !== m - 1 || date.getDate() !== d) return ''
+  return date.toLocaleDateString([], {
     year: 'numeric',
     month: 'short',
     day: 'numeric',

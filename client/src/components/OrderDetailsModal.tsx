@@ -1,11 +1,13 @@
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import { FaTimes, FaTshirt, FaCheckCircle, FaBoxOpen, FaPlay, FaMoneyBillWave, FaSave, FaWind, FaPrint, FaQrcode } from 'react-icons/fa'
 import type { OrderRecord } from '../data/seeds'
 import type { WithDocId } from '../hooks/useCollection'
 import { receivedStamp } from '../lib/dates'
 import { activeTimer } from '../lib/timers'
 import { useTimerSettings } from '../hooks/useTimerSettings'
-import { TimerBadge, useNow } from './TimerBadge'
+import { TimerBadge } from './TimerBadge'
+import { useNow } from '../hooks/useNow'
+import { useResetOnChange } from '../hooks/useResetOnChange'
 import { TimerLengthField } from './TimerLengthField'
 import { ImageViewerModal } from './ImageViewerModal'
 
@@ -69,11 +71,12 @@ export function OrderDetailsModal({ order, machineAvailable, dryerAvailable, was
   const [washMinutes, setWashMinutes] = useState(timerDefaults.washMinutes)
   const [dryMinutes, setDryMinutes] = useState(timerDefaults.dryMinutes)
   const now = useNow()
-  // Reset the staged pick whenever a different order opens in the modal.
-  useEffect(() => { setPendingMachine(order?.assigned ?? '') }, [order?.id, order?.assigned])
-  // Start each order from the shop defaults; follow later changes to them.
-  useEffect(() => { setWashMinutes(timerDefaults.washMinutes) }, [order?.id, timerDefaults.washMinutes])
-  useEffect(() => { setDryMinutes(timerDefaults.dryMinutes) }, [order?.id, timerDefaults.dryMinutes])
+  // Re-seed the modal's local inputs during render rather than in an effect, so
+  // opening a different order never briefly shows the previous one's machine
+  // and timer length.
+  useResetOnChange(`${order?.id ?? ''}|${order?.assigned ?? ''}`, () => setPendingMachine(order?.assigned ?? ''))
+  useResetOnChange(`${order?.id ?? ''}|${timerDefaults.washMinutes}`, () => setWashMinutes(timerDefaults.washMinutes))
+  useResetOnChange(`${order?.id ?? ''}|${timerDefaults.dryMinutes}`, () => setDryMinutes(timerDefaults.dryMinutes))
 
   if (!order) return null
 

@@ -7,7 +7,7 @@ import { PasswordPromptModal } from '../components/PasswordPromptModal'
 import { useCollection } from '../hooks/useCollection'
 import { useShopStaff } from '../hooks/useShopStaff'
 import { fileToResizedDataUrl } from '../hooks/useBranding'
-import { seedActivity, nowStamp, SHOP_ROLES, type ActivityRecord, type ShopRole } from '../data/seeds'
+import { seedActivity, nowStamp, newRecordId, SHOP_ROLES, type ActivityRecord, type ShopRole } from '../data/seeds'
 
 /** Roles a shop owner may assign. The master may additionally mint shop admins. */
 const OWNER_ROLE_OPTIONS: ShopRole[] = ['Manager', 'Staff/Cashier']
@@ -138,7 +138,7 @@ export function UserManagementPage() {
     const error = await removeUser(pendingDelete, enteredPassword)
     if (!error) {
       void addActivity({
-        id: `${Date.now()}-${Math.round(Math.random() * 1e6)}`,
+        id: newRecordId(),
         action: `Deleted user ${pendingDelete.name} (${pendingDelete.username} · ${pendingDelete.role})`,
         user: currentUser?.name ?? 'Unknown',
         at: nowStamp(),

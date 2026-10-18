@@ -32,20 +32,25 @@ export function useCollection<T extends { id: string }>(name: string, seed: T[])
   const shopId = useShopId()
   const [data, setData] = useState<Array<T & WithDocId>>(() => (isFirebaseConfigured ? [] : (seed as Array<T & WithDocId>)))
   const [loading, setLoading] = useState<boolean>(isFirebaseConfigured)
+  const subscribed = Boolean(isFirebaseConfigured && db && shopId)
+
+  // Reset to the right starting point whenever the target collection or the
+  // active shop changes. Done during render (React re-runs immediately without
+  // committing) instead of in an effect, which would paint once with the old
+  // shop's rows still on screen and then re-render.
+  const target = `${name}|${shopId ?? ''}|${subscribed ? 'live' : 'local'}`
+  const [prevTarget, setPrevTarget] = useState(target)
+  if (prevTarget !== target) {
+    setPrevTarget(target)
+    setData(isFirebaseConfigured ? [] : (seed as Array<T & WithDocId>))
+    setLoading(isFirebaseConfigured)
+  }
 
   useEffect(() => {
-    if (!isFirebaseConfigured || !db || !shopId) {
-      if (!isFirebaseConfigured) {
-        setData(seed as Array<T & WithDocId>)
-        setLoading(false)
-      } else {
-        setData([])
-        setLoading(false)
-      }
-      return
-    }
+    if (!isFirebaseConfigured || !db || !shopId) return
 
-    setLoading(true)
+    // `loading` is already true from the initial state / the render-time reset
+    // above, so there is nothing to set here — the snapshot callback clears it.
     const unsubscribe = onSnapshot(
       query(collection(db, name), where('shopId', '==', shopId)),
       (snapshot) => {
@@ -69,8 +74,7 @@ export function useCollection<T extends { id: string }>(name: string, seed: T[])
 
     return unsubscribe
     // `seed` is intentionally excluded — it is a static fallback reference.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [name, shopId])
+  }, [name, shopId, subscribed])
 
   const add = async (item: T) => {
     if (isFirebaseConfigured && db && shopId) {
