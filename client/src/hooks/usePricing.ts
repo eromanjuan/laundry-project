@@ -1,22 +1,27 @@
 import { useEffect, useState } from 'react'
 import { doc, onSnapshot, setDoc } from 'firebase/firestore'
 import { db, isFirebaseConfigured } from '../lib/firebase'
+import { useShopId } from '../context/ShopContext'
 import { defaultPricing, type PricingConfig } from '../data/pricing'
 
 /**
- * Realtime binding to the single `settings/pricing` document, with a local
- * fallback to `defaultPricing`. `save` persists to Firestore when configured,
- * or updates in-memory state otherwise.
+ * Realtime binding to the active shop's `shops/{shopId}/settings/pricing`
+ * document, with a local fallback to `defaultPricing`. `save` persists to
+ * Firestore when configured, or updates in-memory state otherwise.
  */
 export function usePricing() {
+  const shopId = useShopId()
   const [pricing, setPricing] = useState<PricingConfig>(defaultPricing)
-  const [loading, setLoading] = useState<boolean>(isFirebaseConfigured)
+  const [loading, setLoading] = useState<boolean>(isFirebaseConfigured && Boolean(shopId))
 
   useEffect(() => {
-    if (!isFirebaseConfigured || !db) return
-
+    if (!isFirebaseConfigured || !db || !shopId) {
+      setLoading(false)
+      return
+    }
+    setLoading(true)
     const unsubscribe = onSnapshot(
-      doc(db, 'settings', 'pricing'),
+      doc(db, 'shops', shopId, 'settings', 'pricing'),
       (snapshot) => {
         if (snapshot.exists()) {
           setPricing({ ...defaultPricing, ...(snapshot.data() as PricingConfig) })
@@ -28,14 +33,13 @@ export function usePricing() {
         setLoading(false)
       },
     )
-
     return unsubscribe
-  }, [])
+  }, [shopId])
 
   const save = async (next: PricingConfig) => {
     setPricing(next)
-    if (isFirebaseConfigured && db) {
-      await setDoc(doc(db, 'settings', 'pricing'), next)
+    if (isFirebaseConfigured && db && shopId) {
+      await setDoc(doc(db, 'shops', shopId, 'settings', 'pricing'), next)
     }
   }
 

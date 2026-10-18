@@ -4,11 +4,11 @@ import './styles/globals.css'
 import App from './App.tsx'
 import { AuthProvider } from './context/AuthContext'
 import { ErrorBoundary } from './components/ErrorBoundary'
-import { seedDatabaseOnce } from './lib/seed'
 
-// Populate a fresh Firestore project with sample data (no-op when not configured
-// or when the collections already contain records).
-void seedDatabaseOnce()
+// NOTE: the old single-tenant seeder was removed. Every tenant record now carries
+// a `shopId`, so sample data can't be written to the shared top-level
+// collections. A default shop and its data are created by the one-time
+// multi-tenant migration (see scripts/migrate-multitenant.mjs).
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>

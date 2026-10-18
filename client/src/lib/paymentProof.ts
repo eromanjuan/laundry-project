@@ -3,16 +3,18 @@
  *
  * The customer pays the merchant's GCash QR, then uploads a screenshot of their
  * GCash receipt. It's compressed to a small JPEG data URL and written to a
- * `paymentProofs` doc (public create; staff-only read) so the store can verify
- * and settle the balance.
+ * `paymentProofs` doc (public create; that shop's staff only can read) so the
+ * store can verify and settle the balance.
  */
 import { doc, setDoc } from 'firebase/firestore'
 import { db, isFirebaseConfigured } from './firebase'
+import { getActiveShopId } from './activeShop'
 import { trackKey } from './tracking'
 
 export interface PaymentProof {
   id: string
   jobKey: string
+  shopId: string
   image: string
   submittedAt: number
   reviewed?: boolean
@@ -43,8 +45,8 @@ export function resizeImageToJpeg(file: File, max = 900, quality = 0.7): Promise
 }
 
 /** Store a proof-of-payment image for a job. Returns true on success. */
-export async function submitPaymentProof(jobId: string, image: string): Promise<boolean> {
-  if (!isFirebaseConfigured || !db) return false
+export async function submitPaymentProof(jobId: string, image: string, shopId: string = getActiveShopId()): Promise<boolean> {
+  if (!isFirebaseConfigured || !db || !shopId) return false
   const jobKey = trackKey(jobId)
   if (!jobKey || !image) return false
   try {
@@ -53,6 +55,7 @@ export async function submitPaymentProof(jobId: string, image: string): Promise<
     await setDoc(doc(db, 'paymentProofs', id), {
       id: jobId,
       jobKey,
+      shopId,
       image,
       submittedAt: Date.now(),
       reviewed: false,

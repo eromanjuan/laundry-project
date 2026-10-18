@@ -1,19 +1,31 @@
 import { useEffect, useState } from 'react'
 import { doc, onSnapshot, setDoc } from 'firebase/firestore'
 import { db, isFirebaseConfigured } from '../lib/firebase'
+import { useShopId, useShop } from '../context/ShopContext'
 import defaultLogo from '../assets/brand-logo.png'
 
 /**
- * App branding (currently the logo), stored in `settings/branding` as a small
- * base64 data URL. Falls back to the bundled default logo when none is set.
+ * Shop branding (currently the logo), stored in
+ * `shops/{shopId}/settings/branding` as a small base64 data URL. Outside a shop
+ * workspace (e.g. the platform login screen) it falls back to the bundled logo.
+ *
+ * When saved from inside a shop workspace the logo is mirrored (best-effort)
+ * onto the public `shopSlugs/{slug}` document, because the login screen is
+ * unauthenticated and cannot read the shop's private settings.
  */
-export function useBranding() {
+export function useBranding(explicitShopId?: string) {
+  const contextShopId = useShopId()
+  const shop = useShop()
+  const shopId = explicitShopId ?? contextShopId
   const [logoUrl, setLogoUrl] = useState<string>(defaultLogo)
 
   useEffect(() => {
-    if (!isFirebaseConfigured || !db) return
+    if (!isFirebaseConfigured || !db || !shopId) {
+      setLogoUrl(defaultLogo)
+      return
+    }
     const unsubscribe = onSnapshot(
-      doc(db, 'settings', 'branding'),
+      doc(db, 'shops', shopId, 'settings', 'branding'),
       (snapshot) => {
         const data = snapshot.data()
         setLogoUrl(data?.logoDataUrl ? (data.logoDataUrl as string) : defaultLogo)
@@ -21,7 +33,7 @@ export function useBranding() {
       (error) => console.error('[Firestore] listen(settings/branding) failed:', error),
     )
     return unsubscribe
-  }, [])
+  }, [shopId])
 
   // Keep the browser-tab favicon in sync with the active logo.
   useEffect(() => {
@@ -29,14 +41,30 @@ export function useBranding() {
     if (link) link.href = logoUrl
   }, [logoUrl])
 
+  /** Mirror the logo onto the public slug doc so the login screen can show it. */
+  const publishToSlug = async (dataUrl: string) => {
+    if (!isFirebaseConfigured || !db || !shop?.slug) return
+    try {
+      await setDoc(doc(db, 'shopSlugs', shop.slug), { logoDataUrl: dataUrl, updatedAt: Date.now() }, { merge: true })
+    } catch (error) {
+      console.warn('[branding] could not mirror logo to public slug (admin only):', error)
+    }
+  }
+
   const saveLogo = async (dataUrl: string) => {
     setLogoUrl(dataUrl)
-    if (isFirebaseConfigured && db) await setDoc(doc(db, 'settings', 'branding'), { logoDataUrl: dataUrl })
+    if (isFirebaseConfigured && db && shopId) {
+      await setDoc(doc(db, 'shops', shopId, 'settings', 'branding'), { logoDataUrl: dataUrl })
+      await publishToSlug(dataUrl)
+    }
   }
 
   const resetLogo = async () => {
     setLogoUrl(defaultLogo)
-    if (isFirebaseConfigured && db) await setDoc(doc(db, 'settings', 'branding'), { logoDataUrl: '' })
+    if (isFirebaseConfigured && db && shopId) {
+      await setDoc(doc(db, 'shops', shopId, 'settings', 'branding'), { logoDataUrl: '' })
+      await publishToSlug('')
+    }
   }
 
   return { logoUrl, saveLogo, resetLogo, defaultLogo }

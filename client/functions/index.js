@@ -1,15 +1,15 @@
 /**
  * LG machine-sync backend (Firebase Cloud Functions, gen 2).
  *
- * Reads the owner's LG account credentials from Firestore, logs into LG's
- * Laundry Crew Manager, and writes live per-store washer/dryer availability
- * back into Firestore for the POS to display. Runs on a schedule and can also
- * be triggered on demand from the app.
+ * NOTE: this project runs on the Spark (free) plan, so Cloud Functions are NOT
+ * deployed. The scheduled GitHub Action in `lg-sync/` performs the same sync.
+ * This file is kept aligned with the multi-tenant schema in case the project
+ * later moves to Blaze, and now iterates over every shop's own settings.
  *
- * Firestore docs used:
- *   settings/lgConnection  {enabled,email,password,region}   (written by the app)
- *   settings/lgToken       {accessToken,refreshToken,userNo,expiresAt}  (managed here)
- *   settings/lgStatus      {stores:[…],syncedAt,error}        (read by the app)
+ * Firestore docs used (per shop):
+ *   shops/{shopId}/settings/lgConnection  {enabled,email,password,region}  (written by the app)
+ *   shops/{shopId}/settings/lgToken       {accessToken,refreshToken,userNo,expiresAt}  (managed here)
+ *   shops/{shopId}/settings/lgStatus      {stores,machines,syncedAt,error}  (read by the app)
  */
 
 const { onSchedule } = require('firebase-functions/v2/scheduler')
@@ -22,20 +22,20 @@ admin.initializeApp()
 const db = admin.firestore()
 setGlobalOptions({ region: 'us-central1', maxInstances: 3 })
 
-const CONN = 'settings/lgConnection'
-const TOKEN = 'settings/lgToken'
-const STATUS = 'settings/lgStatus'
+/** Reference to a per-shop settings document. */
+const settings = (shopId, key) => db.doc(`shops/${shopId}/settings/${key}`)
 
-/** Get a valid token, refreshing or re-logging-in as needed. */
-async function ensureToken(force = false) {
+/** Get a valid token for one shop, refreshing or re-logging-in as needed. */
+async function ensureToken(shopId, force = false) {
   const now = Date.now()
-  const tokenDoc = await db.doc(TOKEN).get()
+  const tokenRef = settings(shopId, 'lgToken')
+  const tokenDoc = await tokenRef.get()
   const cached = tokenDoc.exists ? tokenDoc.data() : null
   if (!force && cached?.accessToken && cached.expiresAt && now < cached.expiresAt) {
     return cached
   }
 
-  const conn = (await db.doc(CONN).get()).data() || {}
+  const conn = (await settings(shopId, 'lgConnection').get()).data() || {}
   if (!conn.email || !conn.password) throw new Error('LG account email/password not set in settings.')
 
   let token = null
@@ -56,54 +56,68 @@ async function ensureToken(force = false) {
     userNo: token.userNo,
     expiresAt: now + (token.expiresIn || 3600) * 1000 - 60_000, // 1-min safety buffer
   }
-  await db.doc(TOKEN).set(saved)
+  await tokenRef.set(saved)
   return saved
 }
 
-/** Fetch status, transparently re-logging-in once if the token was rejected. */
-async function fetchStatus(force = false) {
-  let token = await ensureToken(force)
+/** Fetch status for one shop, transparently re-logging-in once if rejected. */
+async function fetchStatus(shopId, force = false) {
+  let token = await ensureToken(shopId, force)
   try {
     return await lg.getStatus(token.accessToken, token.userNo)
   } catch (e) {
     // Token may have been revoked early — force a fresh login and retry once.
-    token = await ensureToken(true)
+    token = await ensureToken(shopId, true)
     return await lg.getStatus(token.accessToken, token.userNo)
   }
 }
 
-async function syncOnce(force = false) {
-  const stores = await fetchStatus(force)
-  await db.doc(STATUS).set({ stores, syncedAt: Date.now(), error: null })
+async function syncShop(shopId, force = false) {
+  const stores = await fetchStatus(shopId, force)
+  await settings(shopId, 'lgStatus').set({ stores, syncedAt: Date.now(), error: null })
   return stores
 }
 
-/** Scheduled sync — every 5 minutes while the connection is enabled. */
+/** Shop ids that have an LG connection with sync enabled. */
+async function enabledShopIds() {
+  const snap = await db.collectionGroup('settings').where('enabled', '==', true).get()
+  const ids = new Set()
+  snap.forEach((docSnap) => {
+    if (docSnap.id === 'lgConnection') ids.add(docSnap.ref.parent.parent.id)
+  })
+  return [...ids]
+}
+
+/** Scheduled sync — every 5 minutes for every shop with sync enabled. */
 exports.syncLg = onSchedule('every 5 minutes', async () => {
-  const conn = (await db.doc(CONN).get()).data() || {}
-  if (!conn.enabled || !conn.email) {
-    console.log('LG sync skipped (disabled or no credentials).')
+  const shopIds = await enabledShopIds()
+  if (shopIds.length === 0) {
+    console.log('LG sync skipped (no shops enabled).')
     return
   }
-  try {
-    const stores = await syncOnce(false)
-    console.log(`LG sync ok — ${stores.length} store(s).`)
-  } catch (e) {
-    console.error('LG sync failed:', e.message)
-    await db.doc(STATUS).set({ error: String(e.message || e), syncedAt: Date.now() }, { merge: true })
+  for (const shopId of shopIds) {
+    try {
+      const stores = await syncShop(shopId, false)
+      console.log(`LG sync ok for ${shopId} — ${stores.length} store(s).`)
+    } catch (e) {
+      console.error(`LG sync failed for ${shopId}:`, e.message)
+      await settings(shopId, 'lgStatus').set({ error: String(e.message || e), syncedAt: Date.now() }, { merge: true })
+    }
   }
 })
 
 /**
- * On-demand sign-in / sync, callable from the app. Forces a fresh login so it
- * doubles as credential validation right after the admin enters them.
+ * On-demand sign-in / sync for one shop, callable from the app. Forces a fresh
+ * login so it doubles as credential validation right after the admin enters them.
  */
-exports.syncLgNow = onCall(async () => {
+exports.syncLgNow = onCall(async (request) => {
+  const shopId = request.data?.shopId
+  if (!shopId) throw new HttpsError('invalid-argument', 'shopId is required')
   try {
-    const stores = await syncOnce(true)
+    const stores = await syncShop(shopId, true)
     return { ok: true, stores }
   } catch (e) {
-    await db.doc(STATUS).set({ error: String(e.message || e), syncedAt: Date.now() }, { merge: true })
+    await settings(shopId, 'lgStatus').set({ error: String(e.message || e), syncedAt: Date.now() }, { merge: true })
     throw new HttpsError('internal', e.message || 'LG sign-in failed')
   }
 })

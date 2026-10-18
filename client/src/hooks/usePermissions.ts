@@ -4,11 +4,14 @@ import type { UserRole } from '../data/seeds'
 /**
  * Central role → capability matrix for the whole app.
  *
- *                        Admin   Manager   Staff/Cashier
- *   manageUsers           ✓        ✗           ✗
- *   managePricing         ✓        ✓           ✗
- *   manageCustomers *     ✓        ✓           ✗
- *   addJobOrder           ✓        ✓           ✓
+ *                        Master  Admin   Manager   Staff/Cashier
+ *   manageUsers           ✓       ✓        ✗           ✗
+ *   managePricing         ✓       ✓        ✓           ✗
+ *   manageCustomers *     ✓       ✓        ✓           ✗
+ *   addJobOrder           ✓       ✓        ✓           ✓
+ *
+ * The platform Master has every capability on every client shop. Shop roles are
+ * scoped to their own shop only.
  *
  * * manageCustomers = add / edit / delete on the Customers page. Staff can still
  *   register a walk-in / new customer during job-order intake, but cannot manage
@@ -26,6 +29,17 @@ export interface Permissions {
 }
 
 export function permissionsFor(role: UserRole | undefined): Permissions {
+  // The platform master has unrestricted access to every shop's modules.
+  if (role === 'Master') {
+    return {
+      manageUsers: true,
+      managePricing: true,
+      manageCustomers: true,
+      manageMachines: true,
+      editMachines: true,
+      addJobOrder: true,
+    }
+  }
   const isAdmin = role === 'Administrator'
   const isManager = role === 'Manager'
   return {

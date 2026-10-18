@@ -9,6 +9,7 @@ import { usePermissions } from '../hooks/usePermissions'
 import { useLgConnection } from '../hooks/useLgConnection'
 import { useLgStatus } from '../hooks/useLgStatus'
 import { useAuth } from '../context/AuthContext'
+import { useShop } from '../context/ShopContext'
 import { nextId, nowStamp, seedActivity, seedMachines, seedOrders, type ActivityRecord, type MachineRecord, type OrderRecord } from '../data/seeds'
 import { printReport } from '../lib/exports'
 
@@ -43,6 +44,8 @@ export function MachineMonitoringPage() {
   const { data: activity, add: addActivity } = useCollection<ActivityRecord>('activity', seedActivity)
   const { manageMachines, editMachines } = usePermissions()
   const { user, verifyPassword } = useAuth()
+  const shop = useShop()
+  const base = shop ? `/${shop.slug}` : ''
 
   const logActivity = (action: string) =>
     void addActivity({ id: `${Date.now()}-${Math.round(Math.random() * 1e6)}`, action, user: user?.name ?? 'Unknown', at: nowStamp() })
@@ -271,7 +274,7 @@ export function MachineMonitoringPage() {
             LG account not connected — showing your manually-managed machines below.
           </span>
           {manageMachines ? (
-            <Link to="/settings" className="font-semibold text-blue-600 hover:underline">
+            <Link to={`${base}/settings`} className="font-semibold text-blue-600 hover:underline">
               Connect your LG account in Settings → Machine Sync →
             </Link>
           ) : null}

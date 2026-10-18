@@ -1,5 +1,6 @@
 import { useNavigate } from 'react-router-dom'
 import { StatusBadge } from './StatusBadge'
+import { useShop } from '../context/ShopContext'
 
 interface MachineStatusItem {
   name: string
@@ -12,6 +13,8 @@ interface MachineStatusListProps {
 
 export function MachineStatusList({ machines }: MachineStatusListProps) {
   const navigate = useNavigate()
+  const shop = useShop()
+  const base = shop ? `/${shop.slug}` : ''
 
   return (
     <div className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm shadow-slate-200/70">
@@ -20,7 +23,7 @@ export function MachineStatusList({ machines }: MachineStatusListProps) {
           <h3 className="text-lg font-semibold text-slate-900">Machine Status</h3>
           <p className="text-sm text-slate-500">Live equipment readiness</p>
         </div>
-        <button onClick={() => navigate('/machine-monitoring')} className="text-sm font-semibold text-blue-600">
+        <button onClick={() => navigate(`${base}/machine-monitoring`)} className="text-sm font-semibold text-blue-600">
           Manage Machines
         </button>
       </div>

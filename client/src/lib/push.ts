@@ -2,15 +2,16 @@
  * Web Push subscription for the public order-tracking page.
  *
  * A customer who taps "Notify me" is subscribed to background push. The
- * subscription is stored in `pushSubs/{id}` and a scheduled GitHub Action
- * (see push-sync/) sends a push whenever the order's tracked status changes —
- * so the notification arrives even if the browser tab is closed.
+ * subscription is stored in `pushSubs/{id}` with its `shopId`, and a scheduled
+ * GitHub Action (see push-sync/) sends a push whenever the order's tracked
+ * status changes — so the notification arrives even if the tab is closed.
  *
  * The VAPID PUBLIC key below is safe to ship in the client; the matching private
  * key lives only in the GitHub Action's secrets.
  */
 import { doc, setDoc } from 'firebase/firestore'
 import { db, isFirebaseConfigured } from './firebase'
+import { getActiveShopId } from './activeShop'
 import { trackKey } from './tracking'
 
 export const VAPID_PUBLIC_KEY = 'BATcQrcMGzS8gZnff2WiOLxa0KCMQ3Mo1EcQ9Ev5796uZwaqglTOEDqhP3irSQUhvymTonTY5XsTo5XCbRGWBVw'
@@ -41,8 +42,12 @@ async function subscriptionId(endpoint: string, jobKey: string): Promise<string>
  * `currentStatus` seeds the record so the customer isn't re-notified of the
  * status they can already see. Returns true when stored successfully.
  */
-export async function subscribeToPush(jobId: string, currentStatus: string): Promise<boolean> {
-  if (!isFirebaseConfigured || !db || !pushSupported) return false
+export async function subscribeToPush(
+  jobId: string,
+  currentStatus: string,
+  shopId: string = getActiveShopId(),
+): Promise<boolean> {
+  if (!isFirebaseConfigured || !db || !pushSupported || !shopId) return false
   try {
     const registration = await navigator.serviceWorker.ready
     let sub = await registration.pushManager.getSubscription()
@@ -53,11 +58,12 @@ export async function subscribeToPush(jobId: string, currentStatus: string): Pro
       })
     }
     const json = sub.toJSON()
-    const jobKey = trackKey(jobId)
+    const jobKey = `${shopId}_${trackKey(jobId)}`
     const id = await subscriptionId(sub.endpoint, jobKey)
     await setDoc(
       doc(db, 'pushSubs', id),
       {
+        shopId,
         jobKey,
         endpoint: sub.endpoint,
         keys: { p256dh: json.keys?.p256dh ?? '', auth: json.keys?.auth ?? '' },

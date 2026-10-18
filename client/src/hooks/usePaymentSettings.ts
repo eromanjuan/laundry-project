@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { doc, onSnapshot, setDoc } from 'firebase/firestore'
 import { db, isFirebaseConfigured } from '../lib/firebase'
+import { useShopId } from '../context/ShopContext'
 
 /** Merchant GCash details shown to customers when paying by GCash QR. */
 export interface PaymentSettings {
@@ -16,25 +17,32 @@ export const defaultPaymentSettings: PaymentSettings = {
   gcashQr: '',
 }
 
-/** Payment settings (GCash QR/number), stored in `settings/payment`. */
-export function usePaymentSettings() {
+/**
+ * Payment settings (GCash QR/number), stored in `shops/{shopId}/settings/payment`.
+ *
+ * Pass `shopIdOverride` on the public tracking page, which lives outside a shop
+ * workspace but must still read the shop that owns the tracked order.
+ */
+export function usePaymentSettings(shopIdOverride?: string) {
+  const contextShopId = useShopId()
+  const shopId = shopIdOverride || contextShopId
   const [payment, setPayment] = useState<PaymentSettings>(defaultPaymentSettings)
 
   useEffect(() => {
-    if (!isFirebaseConfigured || !db) return
+    if (!isFirebaseConfigured || !db || !shopId) return
     const unsubscribe = onSnapshot(
-      doc(db, 'settings', 'payment'),
+      doc(db, 'shops', shopId, 'settings', 'payment'),
       (snapshot) => {
         if (snapshot.exists()) setPayment({ ...defaultPaymentSettings, ...(snapshot.data() as PaymentSettings) })
       },
       (error) => console.error('[Firestore] listen(settings/payment) failed:', error),
     )
     return unsubscribe
-  }, [])
+  }, [shopId])
 
   const save = async (next: PaymentSettings) => {
     setPayment(next)
-    if (isFirebaseConfigured && db) await setDoc(doc(db, 'settings', 'payment'), next)
+    if (isFirebaseConfigured && db && shopId) await setDoc(doc(db, 'shops', shopId, 'settings', 'payment'), next)
   }
 
   return { payment, save }

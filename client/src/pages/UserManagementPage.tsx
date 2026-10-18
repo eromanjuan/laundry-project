@@ -1,18 +1,26 @@
 import { useMemo, useState, type ChangeEvent, type FormEvent } from 'react'
 import { FaEdit, FaLock, FaPlus, FaTrash, FaUserShield, FaBan, FaCheck, FaCamera } from 'react-icons/fa'
-import { useAuth, type AuthUser, type UserRole } from '../context/AuthContext'
+import { useAuth, type AuthUser } from '../context/AuthContext'
+import { useShop } from '../context/ShopContext'
 import { ConfirmModal } from '../components/ConfirmModal'
 import { PasswordPromptModal } from '../components/PasswordPromptModal'
 import { useCollection } from '../hooks/useCollection'
+import { useShopStaff } from '../hooks/useShopStaff'
 import { fileToResizedDataUrl } from '../hooks/useBranding'
-import { seedActivity, nowStamp, type ActivityRecord } from '../data/seeds'
+import { seedActivity, nowStamp, SHOP_ROLES, type ActivityRecord, type ShopRole } from '../data/seeds'
 
-const roleOptions: UserRole[] = ['Administrator', 'Manager', 'Staff/Cashier']
+/** Roles a shop owner may assign. The master may additionally mint shop admins. */
+const OWNER_ROLE_OPTIONS: ShopRole[] = ['Manager', 'Staff/Cashier']
 
 export function UserManagementPage() {
-  const { user: currentUser, users, addUser, updateUser, removeUser, sendReset } = useAuth()
+  const { user: currentUser, users: authUsers, addUser, updateUser, removeUser, sendReset, isMaster } = useAuth()
+  // The platform master is not a member of any shop, so it loads the staff of
+  // the shop it is currently inspecting. Shop owners use their own staff list.
+  const { shopId } = useShop() ?? { shopId: '' }
+  const { staff: masterStaff } = useShopStaff(shopId, isMaster)
+  const users = isMaster ? masterStaff : authUsers
   const { add: addActivity } = useCollection<ActivityRecord>('activity', seedActivity)
-  const [selectedRole, setSelectedRole] = useState<UserRole>('Staff/Cashier')
+  const [selectedRole, setSelectedRole] = useState<ShopRole>('Staff/Cashier')
   const [name, setName] = useState('')
   const [username, setUsername] = useState('')
   const [email, setEmail] = useState('')
@@ -20,6 +28,20 @@ export function UserManagementPage() {
   const [photo, setPhoto] = useState('')
   const [editingId, setEditingId] = useState<string | null>(null)
   const [formError, setFormError] = useState('')
+
+  // Roles offered in the form. The master may create/promote shop
+  // Administrators; owners are limited to Manager / Staff-Cashier. When an owner
+  // edits an existing Administrator (their own profile) the role stays fixed.
+  const editingRow = editingId ? users.find((entry) => entry.id === editingId) : undefined
+  const roleOptions: ShopRole[] = isMaster
+    ? SHOP_ROLES
+    : editingRow?.role === 'Administrator'
+      ? ['Administrator']
+      : OWNER_ROLE_OPTIONS
+
+  /** Whether the signed-in user may edit / disable / delete this account. */
+  const canManage = (row: AuthUser) =>
+    isMaster || row.role !== 'Administrator' || row.id === currentUser?.id
 
   const handlePhotoUpload = async (event: ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0]
@@ -68,16 +90,19 @@ export function UserManagementPage() {
         await updateUser(existing, { name, username, role: selectedRole, photo })
       }
     } else {
-      const error = await addUser({
-        id: `u${Date.now()}`,
-        name,
-        username,
-        email,
-        role: selectedRole,
-        isActive: true,
-        password,
-        photo,
-      })
+      const error = await addUser(
+        {
+          id: `u${Date.now()}`,
+          name,
+          username,
+          email,
+          role: selectedRole,
+          isActive: true,
+          password,
+          photo,
+        },
+        shopId || undefined,
+      )
       if (error) {
         setFormError(error)
         return
@@ -92,7 +117,7 @@ export function UserManagementPage() {
     setName(user.name)
     setUsername(user.username)
     setEmail(user.email)
-    setSelectedRole(user.role)
+    setSelectedRole(user.role as ShopRole)
     setPassword('')
     setPhoto(user.photo ?? '')
   }
@@ -180,7 +205,7 @@ export function UserManagementPage() {
             </label>
             <label className="block space-y-1">
               <span className="text-sm font-semibold text-slate-700">Role</span>
-              <select value={selectedRole} onChange={(event) => setSelectedRole(event.target.value as UserRole)} className="w-full rounded-2xl border border-slate-200 px-3 py-2.5 outline-none">
+              <select value={selectedRole} onChange={(event) => setSelectedRole(event.target.value as ShopRole)} className="w-full rounded-2xl border border-slate-200 px-3 py-2.5 outline-none">
                 {roleOptions.map((role) => <option key={role} value={role}>{role}</option>)}
               </select>
             </label>
@@ -220,12 +245,16 @@ export function UserManagementPage() {
                     </div>
                   </div>
                   <div className="flex flex-wrap gap-2">
-                    <button onClick={() => handleEdit(user)} title="Edit" aria-label="Edit" className="rounded-xl border border-slate-200 bg-white p-2.5 text-slate-700 transition hover:bg-slate-100"><FaEdit /></button>
-                    <button onClick={() => toggleStatus(user)} title={user.isActive ? 'Disable' : 'Enable'} aria-label={user.isActive ? 'Disable' : 'Enable'} className={`rounded-xl p-2.5 transition ${user.isActive ? 'bg-amber-100 text-amber-800 hover:bg-amber-200' : 'bg-emerald-100 text-emerald-800 hover:bg-emerald-200'}`}>
-                      {user.isActive ? <FaBan /> : <FaCheck />}
-                    </button>
+                    {canManage(user) ? (
+                      <button onClick={() => handleEdit(user)} title="Edit" aria-label="Edit" className="rounded-xl border border-slate-200 bg-white p-2.5 text-slate-700 transition hover:bg-slate-100"><FaEdit /></button>
+                    ) : null}
+                    {user.id !== currentUser?.id && canManage(user) ? (
+                      <button onClick={() => toggleStatus(user)} title={user.isActive ? 'Disable' : 'Enable'} aria-label={user.isActive ? 'Disable' : 'Enable'} className={`rounded-xl p-2.5 transition ${user.isActive ? 'bg-amber-100 text-amber-800 hover:bg-amber-200' : 'bg-emerald-100 text-emerald-800 hover:bg-emerald-200'}`}>
+                        {user.isActive ? <FaBan /> : <FaCheck />}
+                      </button>
+                    ) : null}
                     <button onClick={() => setPendingReset(user)} title="Reset password" aria-label="Reset password" className="rounded-xl border border-slate-200 bg-white p-2.5 text-slate-700 transition hover:bg-slate-100"><FaLock /></button>
-                    {user.id !== currentUser?.id ? (
+                    {user.id !== currentUser?.id && canManage(user) ? (
                       <button onClick={() => setPendingDelete(user)} title="Delete" aria-label="Delete" className="rounded-xl border border-rose-200 bg-rose-50 p-2.5 text-rose-700 transition hover:bg-rose-100"><FaTrash /></button>
                     ) : null}
                   </div>

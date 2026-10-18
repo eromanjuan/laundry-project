@@ -1,32 +1,58 @@
 import { useState, type FormEvent } from 'react'
-import { useNavigate } from 'react-router-dom'
-import { FaLock, FaUser, FaArrowRight } from 'react-icons/fa'
+import { Link, useNavigate, useSearchParams } from 'react-router-dom'
+import { FaLock, FaUser, FaArrowRight, FaStore, FaEnvelope } from 'react-icons/fa'
 import { useAuth } from '../context/AuthContext'
 import { useBranding } from '../hooks/useBranding'
+import { useShopBySlug } from '../hooks/useShopBySlug'
 import heroImage from '../assets/login-hero.jpg'
 
 export function LoginPage() {
+  const [params] = useSearchParams()
+  const shopSlug = params.get('shop') ?? undefined
+  const { slugRecord } = useShopBySlug(shopSlug)
+  const { defaultLogo } = useBranding()
+
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [error, setError] = useState('')
+  const [notice, setNotice] = useState('')
   const [busy, setBusy] = useState(false)
-  const { login } = useAuth()
-  const { logoUrl } = useBranding()
+  const { login, forgotPassword, hasSession, user, loading, logout } = useAuth()
   const navigate = useNavigate()
+
+  const logoUrl = slugRecord?.logoDataUrl || defaultLogo
+  const shopName = slugRecord?.name || 'Laundry Project'
+  const orphaned = !loading && hasSession && !user
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
     setError('')
+    setNotice('')
     setBusy(true)
     const success = await login(email, password)
     setBusy(false)
 
     if (success) {
-      navigate('/dashboard')
+      // HomeRedirectPage resolves the correct landing spot once the profile
+      // (and the user's shop) has loaded.
+      navigate('/')
       return
     }
-
     setError('Invalid email or password.')
+  }
+
+  const handleForgot = async () => {
+    if (!email.trim()) {
+      setError('Enter your email or username first, then tap “Forgot password”.')
+      return
+    }
+    setError('')
+    try {
+      await forgotPassword(email)
+      setNotice('If that account exists, a password-reset email is on its way.')
+    } catch {
+      setNotice('If that account exists, a password-reset email is on its way.')
+    }
   }
 
   return (
@@ -42,18 +68,37 @@ export function LoginPage() {
         <div className="flex flex-col justify-center p-8 sm:p-12">
           <div className="mb-8 flex items-center gap-3">
             <div className="flex h-16 w-16 items-center justify-center overflow-hidden rounded-2xl bg-white shadow-md ring-1 ring-blue-100">
-              <img src={logoUrl} alt="Laundry Project logo" className="h-full w-full object-contain" />
+              <img src={logoUrl} alt={`${shopName} logo`} className="h-full w-full object-contain" />
             </div>
-            <div>
-              <p className="text-xs font-semibold uppercase tracking-[0.3em] text-blue-600">Laundry Project</p>
-              <p className="text-lg font-semibold text-slate-900">Point of Sale</p>
+            <div className="min-w-0">
+              <p className="truncate text-xs font-semibold uppercase tracking-[0.3em] text-blue-600">Laundry Project</p>
+              <p className="truncate text-lg font-semibold text-slate-900">{shopName}</p>
             </div>
           </div>
+
+          {shopSlug ? (
+            <div className="mb-6 flex items-center gap-2 rounded-2xl border border-blue-100 bg-blue-50 px-4 py-2.5 text-sm text-blue-700">
+              <FaStore /> Signing in to <span className="font-mono font-semibold">/{shopSlug}</span>
+            </div>
+          ) : null}
 
           <div className="mb-8">
             <h1 className="text-3xl font-semibold text-slate-900">Welcome back</h1>
             <p className="mt-2 text-sm text-slate-500">Sign in to manage your laundry operations.</p>
           </div>
+
+          {orphaned ? (
+            <div className="mb-6 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+              <p className="font-semibold">This account is not attached to a shop.</p>
+              <p className="mt-1 text-amber-700">
+                It may have been removed by an administrator. Try a different account, or{' '}
+                <button onClick={logout} className="font-semibold underline">
+                  sign out
+                </button>
+                .
+              </p>
+            </div>
+          ) : null}
 
           <form className="space-y-4" onSubmit={handleSubmit}>
             <label className="block">
@@ -86,14 +131,35 @@ export function LoginPage() {
             {error ? (
               <p className="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-2.5 text-sm font-medium text-rose-600">{error}</p>
             ) : null}
+            {notice ? (
+              <p className="rounded-2xl border border-blue-200 bg-blue-50 px-4 py-2.5 text-sm font-medium text-blue-700">{notice}</p>
+            ) : null}
 
-            <button disabled={busy} className="group flex w-full items-center justify-center gap-2 rounded-2xl bg-gradient-to-r from-blue-600 to-blue-700 px-4 py-3.5 text-sm font-semibold text-white shadow-lg shadow-blue-200 transition hover:from-blue-700 hover:to-blue-800 disabled:opacity-60">
+            <button
+              disabled={busy}
+              className="group flex w-full items-center justify-center gap-2 rounded-2xl bg-gradient-to-r from-blue-600 to-blue-700 px-4 py-3.5 text-sm font-semibold text-white shadow-lg shadow-blue-200 transition hover:from-blue-700 hover:to-blue-800 disabled:opacity-60"
+            >
               {busy ? 'Signing in…' : 'Sign In'}
               <FaArrowRight className="transition group-hover:translate-x-0.5" />
             </button>
+
+            <button
+              type="button"
+              onClick={handleForgot}
+              className="flex w-full items-center justify-center gap-2 text-sm font-medium text-slate-500 transition hover:text-blue-600"
+            >
+              <FaEnvelope className="text-xs" /> Forgot password?
+            </button>
           </form>
 
-          <p className="mt-8 text-center text-xs text-slate-400">
+          <div className="mt-8 rounded-2xl border border-slate-100 bg-slate-50 px-4 py-3 text-center text-sm text-slate-600">
+            Own a laundry shop?{' '}
+            <Link to="/register" className="font-semibold text-blue-600 hover:underline">
+              Register your shop
+            </Link>
+          </div>
+
+          <p className="mt-6 text-center text-xs text-slate-400">
             Cleaner care, better living — © {new Date().getFullYear()} Laundry Project
           </p>
         </div>

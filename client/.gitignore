@@ -15,10 +15,13 @@ dist-ssr
 # Firebase deploy cache
 .firebase/
 
-# Local environment (Firebase keys) — never commit
+# Local environment (Firebase keys) - never commit
 .env
 .env.*
 !.env.example
+
+# One-time migration backups (may contain production data)
+backups/
 
 # Editor directories and files
 .vscode/*

@@ -2,55 +2,315 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
-    // Public username → email lookup (needed before sign-in for username login).
-    // Contains only { email }, no sensitive data.
+    // =====================================================================
+    //  Helpers
+    // =====================================================================
+    // The platform master is allow-listed by uid (server-side, non-forgeable).
+    // Access is NOT granted by email or by any client-supplied role value.
+    // There are three accepted master identities:
+    //   1. the primary hard-coded uid below (the platform founder),
+    //   2. a uid carrying the legacy `isMaster` custom claim (Admin SDK only),
+    //   3. a uid present in the in-app `platformAdmins` allow-list.
+    // The in-app list is the only one writable from the app, and only by an
+    // existing master, so privilege can never be self-granted.
+    function masterUid() { return '3NkY5cfPGhNYXfW4EukNDaOrEjz2'; }
+    function platformAdminPath(uid) {
+      return /databases/$(database)/documents/platformAdmins/$(uid);
+    }
+    function isMaster() {
+      return request.auth != null
+        && (request.auth.uid == masterUid()
+            || request.auth.token.isMaster == true
+            || exists(platformAdminPath(request.auth.uid)));
+    }
+
+    function userPath(uid) { return /databases/$(database)/documents/users/$(uid); }
+    function shopPath(sid) { return /databases/$(database)/documents/shops/$(sid); }
+
+    // A signed-in user who belongs to `sid` and is enabled.
+    function isMember(sid) {
+      return request.auth != null
+        && get(userPath(request.auth.uid)).data.shopId == sid
+        && get(userPath(request.auth.uid)).data.isActive == true;
+    }
+    // Member of `sid` whose shop has been approved and is not suspended.
+    function isActiveMember(sid) {
+      return isMember(sid) && get(shopPath(sid)).data.status == 'active';
+    }
+    function isShopManager(sid) {
+      return isActiveMember(sid)
+        && get(userPath(request.auth.uid)).data.role in ['Administrator', 'Manager'];
+    }
+    function isShopAdmin(sid) {
+      return isActiveMember(sid) && get(userPath(request.auth.uid)).data.role == 'Administrator';
+    }
+
+    // =====================================================================
+    //  Public slug resolution + login branding (no private data)
+    // =====================================================================
+    match /shopSlugs/{slug} {
+      allow read: if true;
+      // The master may create/repair any slug. Otherwise the owner creates their
+      // own slug right after registering: it must reference a shop they own and
+      // that is still pending.
+      allow create: if isMaster()
+        || (request.auth != null
+            && request.resource.data.ownerUid == request.auth.uid
+            && request.resource.data.slug == slug
+            && request.resource.data.status == 'pending'
+            && get(shopPath(request.resource.data.shopId)).data.ownerUid == request.auth.uid);
+      allow update: if isMaster()
+        || (isShopAdmin(resource.data.shopId)
+            && request.resource.data.shopId == resource.data.shopId
+            && request.resource.data.ownerUid == resource.data.ownerUid
+            && request.resource.data.status == resource.data.status);
+      allow delete: if isMaster();
+    }
+
+    // =====================================================================
+    //  Shops (tenant roots)
+    // =====================================================================
+    match /shops/{shopId} {
+      allow read: if isMaster()
+        || (request.auth != null && get(shopPath(shopId)).data.ownerUid == request.auth.uid)
+        || isMember(shopId)
+        || isActiveMember(shopId);
+      // The master may create any shop (e.g. the migrated default shop). A
+      // signed-in user may create exactly one shop they own, as pending.
+      allow create: if isMaster()
+        || (request.auth != null
+            && request.resource.data.ownerUid == request.auth.uid
+            && request.resource.data.status == 'pending');
+      // Owner may edit their shop profile but can never change approval state,
+      // ownership, or creation time. Only the master may change `status`.
+      allow update: if isMaster()
+        || (isShopAdmin(shopId)
+            && request.resource.data.status == resource.data.status
+            && request.resource.data.ownerUid == resource.data.ownerUid
+            && request.resource.data.createdAt == resource.data.createdAt);
+      allow delete: if isMaster();
+    }
+
+    // Per-shop configuration. Pricing / LG credentials are manager-only;
+    // business, branding and payment info are readable by every member.
+    match /shops/{shopId}/settings/{key} {
+      allow read: if isMaster()
+        || isActiveMember(shopId)
+        || (get(shopPath(shopId)).data.ownerUid == request.auth.uid);
+      allow write: if isMaster()
+        || (isActiveMember(shopId)
+            && (key != 'pricing' || isShopManager(shopId))
+            && (key != 'lgConnection' || isShopManager(shopId))
+            && (key != 'lgToken' || isShopManager(shopId)));
+    }
+
+    // =====================================================================
+    //  Members (user profiles)
+    // =====================================================================
+    match /users/{uid} {
+      allow read: if isMaster()
+        || (request.auth != null && request.auth.uid == uid)
+        || isShopAdmin(resource.data.shopId);
+
+      // Creation is allowed for exactly three trusted flows:
+      //   1. the master (uid allow-list) creating its own profile,
+      //   2. a brand-new shop owner registering (pending, owns the shop),
+      //   3. an approved shop admin creating staff inside their own shop.
+      allow create: if isMaster()
+        || (request.auth != null && request.auth.uid == uid
+            && uid == masterUid() && request.resource.data.role == 'Master')
+        || (request.auth != null && request.auth.uid == uid
+            && request.resource.data.role == 'Administrator'
+            && request.resource.data.status == 'pending'
+            && get(shopPath(request.resource.data.shopId)).data.ownerUid == uid)
+        || (isShopAdmin(request.resource.data.shopId)
+            && request.resource.data.shopId == get(userPath(request.auth.uid)).data.shopId
+            && request.resource.data.role in ['Manager', 'Staff/Cashier']);
+
+      // A user may edit their own safe fields. A shop admin may manage staff
+      // (role/isActive) inside their shop. Nobody can move a profile to another
+      // shop, change a uid/email, or self-assign Administrator/Master.
+      allow update: if isMaster()
+        || (request.auth != null && request.auth.uid == uid
+            && !request.resource.data.diff(resource.data).affectedKeys()
+                 .hasAny(['role', 'shopId', 'status', 'isActive', 'uid', 'email']))
+        || (isShopAdmin(resource.data.shopId)
+            && resource.data.role != 'Administrator'
+            && !request.resource.data.diff(resource.data).affectedKeys()
+                 .hasAny(['shopId', 'uid', 'email', 'status'])
+            && (!request.resource.data.diff(resource.data).affectedKeys().hasAny(['role'])
+                || request.resource.data.role in ['Manager', 'Staff/Cashier']));
+
+      allow delete: if isMaster()
+        || (isShopAdmin(resource.data.shopId) && resource.data.role != 'Administrator');
+    }
+
+    // =====================================================================
+    //  Username → email lookup (needed before sign-in)
+    // =====================================================================
     match /usernames/{name} {
       allow read: if true;
-      allow write: if request.auth != null;
+      allow create: if isMaster()
+        || (request.auth != null
+            && (request.resource.data.uid == request.auth.uid
+                || isShopAdmin(request.resource.data.shopId)));
+      allow update: if isMaster()
+        || (request.auth != null
+        && (resource.data.uid == request.auth.uid
+            || isShopAdmin(resource.data.shopId)));
+      allow delete: if isMaster()
+        || (request.auth != null && resource.data.uid == request.auth.uid)
+        || isShopAdmin(resource.data.shopId);
     }
 
-    // Business settings (logo, pricing, receipt info) — readable so the login
-    // screen can show branding; only signed-in users can change them.
-    match /settings/{doc} {
-      allow read: if true;
-      allow write: if request.auth != null;
+    // =====================================================================
+    //  Tenant collections — one shop can never see another's records.
+    // =====================================================================
+    function canReadTenant(sid) { return isMaster() || isActiveMember(sid); }
+    function canWriteTenant(sid) {
+      return isMaster()
+        || (isActiveMember(sid) && request.resource.data.shopId == sid);
     }
 
-    // Public order tracking — only { id, status, updatedAt } (no PII). Read by
-    // customers scanning the QR on their receipt; written by signed-in staff.
-    match /tracking/{id} {
-      allow read: if true;
-      allow write: if request.auth != null;
+    // Customers: only admins/managers may create, edit or delete.
+    match /customers/{id} {
+      allow read: if canReadTenant(resource.data.shopId);
+      allow create: if isMaster() || isShopManager(request.resource.data.shopId);
+      allow update: if isMaster() || (isShopManager(resource.data.shopId)
+        && request.resource.data.shopId == resource.data.shopId);
+      allow delete: if isMaster() || isShopManager(resource.data.shopId);
     }
 
-    // GCash proof-of-payment images uploaded by customers from the tracking page.
-    // Anyone may create a validated, size-capped proof; only signed-in staff can
-    // read them (to verify) or update/delete (to mark reviewed / clear).
+    // Machines: managers add/remove; any active member edits state/maintenance.
+    match /machines/{id} {
+      allow read: if canReadTenant(resource.data.shopId);
+      allow create: if isMaster() || isShopManager(request.resource.data.shopId);
+      allow update: if canWriteTenant(resource.data.shopId)
+        && request.resource.data.shopId == resource.data.shopId;
+      allow delete: if isMaster() || isShopManager(resource.data.shopId);
+    }
+
+    // Operational records: any active member of the owning shop.
+    match /orders/{id} {
+      allow read: if canReadTenant(resource.data.shopId);
+      allow create: if canWriteTenant(request.resource.data.shopId);
+      allow update: if canWriteTenant(resource.data.shopId)
+        && request.resource.data.shopId == resource.data.shopId;
+      allow delete: if isMaster() || (isActiveMember(resource.data.shopId)
+        && get(userPath(request.auth.uid)).data.role in ['Administrator', 'Manager']);
+    }
+
+    match /claims/{id} {
+      allow read: if canReadTenant(resource.data.shopId);
+      allow create: if canWriteTenant(request.resource.data.shopId);
+      allow update: if canWriteTenant(resource.data.shopId)
+        && request.resource.data.shopId == resource.data.shopId;
+      allow delete: if isMaster() || (isActiveMember(resource.data.shopId)
+        && get(userPath(request.auth.uid)).data.role in ['Administrator', 'Manager']);
+    }
+
+    match /payments/{id} {
+      allow read: if canReadTenant(resource.data.shopId);
+      allow create: if canWriteTenant(request.resource.data.shopId);
+      allow update: if canWriteTenant(resource.data.shopId)
+        && request.resource.data.shopId == resource.data.shopId;
+      allow delete: if isMaster() || (isActiveMember(resource.data.shopId)
+        && get(userPath(request.auth.uid)).data.role in ['Administrator', 'Manager']);
+    }
+
+    match /expenses/{id} {
+      allow read: if canReadTenant(resource.data.shopId);
+      allow create: if canWriteTenant(request.resource.data.shopId);
+      allow update: if canWriteTenant(resource.data.shopId)
+        && request.resource.data.shopId == resource.data.shopId;
+      allow delete: if isMaster() || (isActiveMember(resource.data.shopId)
+        && get(userPath(request.auth.uid)).data.role in ['Administrator', 'Manager']);
+    }
+
+    match /cashPayments/{id} {
+      allow read: if canReadTenant(resource.data.shopId);
+      allow create: if canWriteTenant(request.resource.data.shopId);
+      allow update: if canWriteTenant(resource.data.shopId)
+        && request.resource.data.shopId == resource.data.shopId;
+      allow delete: if canWriteTenant(resource.data.shopId);
+    }
+
+    match /collections/{id} {
+      allow read: if canReadTenant(resource.data.shopId);
+      allow create: if canWriteTenant(request.resource.data.shopId);
+      allow update: if canWriteTenant(resource.data.shopId)
+        && request.resource.data.shopId == resource.data.shopId;
+      allow delete: if canWriteTenant(resource.data.shopId);
+    }
+
+    match /activity/{id} {
+      allow read: if canReadTenant(resource.data.shopId);
+      allow create: if canWriteTenant(request.resource.data.shopId);
+      allow update: if canWriteTenant(resource.data.shopId);
+      allow delete: if isMaster();
+    }
+
+    // =====================================================================
+    //  Public, customer-facing collections
+    // =====================================================================
+    // GCash proof-of-payment: anyone may submit a validated, size-capped image
+    // for an active shop; only that shop's members may read/verify them.
     match /paymentProofs/{id} {
-      allow read: if request.auth != null;
+      allow read: if canReadTenant(resource.data.shopId);
       allow create: if request.resource.data.jobKey is string
         && request.resource.data.image is string
-        && request.resource.data.image.size() < 1000000;
-      allow update, delete: if request.auth != null;
+        && request.resource.data.image.size() < 1000000
+        && request.resource.data.shopId is string
+        && get(shopPath(request.resource.data.shopId)).data.status == 'active';
+      allow update, delete: if canReadTenant(resource.data.shopId);
     }
 
-    // Push-notification subscriptions written by customers (unauthenticated) from
-    // the tracking page. Never publicly readable (endpoints are semi-sensitive);
-    // the push-sync GitHub Action reads/deletes them via the admin SDK. Writes are
-    // shape-validated to limit abuse; deletes from clients are blocked.
+    // Public order tracking — keyed by `${shopId}_${jobKey}`, no PII. Read by
+    // customers scanning a receipt QR; written only by that shop's staff.
+    match /tracking/{trackId} {
+      allow read: if true;
+      allow create, update: if isMaster()
+        || (isActiveMember(request.resource.data.shopId));
+      allow delete: if isMaster();
+    }
+
+    // Push subscriptions written by customers (unauthenticated). Never publicly
+    // readable; the push-sync GitHub Action reads/removes them via Admin SDK.
     match /pushSubs/{id} {
       allow read: if false;
       allow create, update: if request.resource.data.jobKey is string
+        && request.resource.data.shopId is string
         && request.resource.data.endpoint is string
         && request.resource.data.endpoint.size() < 2000
         && request.resource.data.keys is map;
       allow delete: if false;
     }
 
-    // Everything else (customers, orders, payments, users, etc.):
-    // signed-in users only. This closes the public read/write hole.
+    // =====================================================================
+    //  Platform-only internals
+    // =====================================================================
+    match /settings/{doc} {
+      allow read, write: if isMaster();
+    }
+    match /_meta/{doc} {
+      allow read, write: if isMaster();
+    }
+    // Additional platform administrators (the in-app allow-list referenced by
+    // `isMaster()`). Only an existing master may read or change it, so a member
+    // can never add themselves. Deleting a doc here revokes that uid's master
+    // access immediately (the Auth account itself can only be purged with the
+    // Admin SDK, which is unavailable on the Spark plan).
+    match /platformAdmins/{uid} {
+      // Any signed-in user may check *their own* membership (the app uses this to
+      // detect a promoted account); masters may read/write the whole list.
+      allow get: if request.auth != null && request.auth.uid == uid;
+      allow read: if isMaster();
+      allow create, update, delete: if isMaster();
+    }
+
+    // Deny anything not explicitly matched above.
     match /{document=**} {
-      allow read, write: if request.auth != null;
+      allow read, write: if false;
     }
   }
 }

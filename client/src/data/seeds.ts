@@ -11,7 +11,15 @@
  * `_docId` by the `useCollection` hook, so these codes stay stable for display.
  */
 
-export type UserRole = 'Administrator' | 'Manager' | 'Staff/Cashier'
+/** Roles a member can hold inside a single shop. */
+export type ShopRole = 'Administrator' | 'Manager' | 'Staff/Cashier'
+/** Platform-wide roles. `Master` is the platform administrator (no shop). */
+export type UserRole = ShopRole | 'Master'
+
+export const SHOP_ROLES: ShopRole[] = ['Administrator', 'Manager', 'Staff/Cashier']
+
+/** Approval lifecycle for a shop (and its owner account). */
+export type ShopStatus = 'pending' | 'active' | 'suspended' | 'rejected'
 
 export interface UserRecord {
   id: string
@@ -21,11 +29,69 @@ export interface UserRecord {
   role: UserRole
   isActive: boolean
   password: string
+  /** Firebase Auth uid. Mirrors the Firestore document id for signed-in users. */
+  uid?: string
+  /** The shop this member belongs to. Empty/undefined for the platform master. */
+  shopId?: string
+  /** Cached shop slug so the app can redirect a member into their workspace. */
+  shopSlug?: string
+  /** Account approval status (mirrors the owning shop's status). */
+  status?: ShopStatus
   /** Set after an admin reset — forces the user to choose a new password at next login. */
   mustChangePassword?: boolean
   /** Profile photo as a small base64 data URL. */
   photo?: string
 }
+
+/** A tenant: one independent laundry shop on the shared platform. */
+export interface ShopRecord {
+  id: string
+  name: string
+  /** URL-safe, unique identifier used in `/{slug}` routes. */
+  slug: string
+  ownerUid: string
+  ownerName: string
+  ownerEmail: string
+  contact: string
+  address: string
+  /** Human-readable location label, e.g. city/barangay. */
+  location: string
+  status: ShopStatus
+  createdAt: number
+  approvedAt?: number
+  approvedBy?: string
+  /** Reason shown to the owner when a registration is rejected. */
+  rejectedReason?: string
+}
+
+/** Public slug → shop resolution document (`shopSlugs/{slug}`). Safe to read. */
+export interface ShopSlugRecord {
+  shopId: string
+  slug: string
+  name: string
+  /** Small base64 logo shown on the shop's login screen. */
+  logoDataUrl?: string
+  status: ShopStatus
+  ownerUid: string
+  updatedAt: number
+}
+
+/** Turn a shop name into a URL-safe slug. */
+export function slugify(value: string): string {
+  return value
+    .toLowerCase()
+    .trim()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 48)
+}
+
+/** Reserved slugs that must never be claimed by a shop. */
+export const RESERVED_SLUGS = new Set([
+  'admin', 'login', 'register', 'logout', 'track', 'api', 'settings',
+  'dashboard', 'customers', 'orders', 'payments', 'expenses', 'reports',
+  'app', 'www', 'master', 'platform', 'support', 'help', 'about',
+])
 
 /** Default password an admin reset falls back to. */
 export const DEFAULT_RESET_PASSWORD = '12345'

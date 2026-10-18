@@ -8,8 +8,8 @@
  * and sends pushes directly with the VAPID keys.
  *
  * Firestore docs used:
- *   tracking/{jobKey}   { id, status, updatedAt }         (written by the POS app)
- *   pushSubs/{id}       { jobKey, endpoint, keys, lastStatus, updatedAt }
+ *   tracking/{shopId}_{jobKey}  { id, shopId, status, updatedAt }  (written by the POS app)
+ *   pushSubs/{id}               { shopId, jobKey, endpoint, keys, lastStatus, updatedAt }
  *
  * Env:
  *   FIREBASE_SERVICE_ACCOUNT  JSON service-account key (same secret as lg-sync)
@@ -83,11 +83,16 @@ async function run() {
     const status = await statusFor(sub.jobKey)
     if (!status || status === sub.lastStatus) continue
 
+    // jobKey is `${shopId}_${jobKey}`; link straight to the namespaced tracker.
+    const shopId = sub.shopId || (sub.jobKey.includes('_') ? sub.jobKey.split('_')[0] : '')
+    const jobKeyPart = shopId && sub.jobKey.startsWith(`${shopId}_`) ? sub.jobKey.slice(shopId.length + 1) : sub.jobKey
+    const url = shopId ? `${SITE_URL}/track/${shopId}/${jobKeyPart}` : `${SITE_URL}/track/${sub.jobKey}`
+
     const payload = JSON.stringify({
       id: sub.jobKey,
       status,
       body: friendly(status),
-      url: `${SITE_URL}/track/${sub.jobKey}`,
+      url,
     })
     try {
       await webpush.sendNotification({ endpoint: sub.endpoint, keys: sub.keys }, payload)

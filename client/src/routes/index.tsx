@@ -1,6 +1,8 @@
+import type { ReactNode } from 'react'
 import { createBrowserRouter, Navigate } from 'react-router-dom'
-import { ProtectedRoute } from '../components/ProtectedRoute'
 import { RouteError } from '../components/ErrorBoundary'
+import { ShopGuard } from '../components/ShopGuard'
+import { MasterRoute } from '../components/MasterRoute'
 import { AppLayout } from '../layouts/AppLayout'
 import { DashboardPage } from '../pages/DashboardPage'
 import { CustomersPage } from '../pages/CustomersPage'
@@ -15,160 +17,109 @@ import { HistoryPage } from '../pages/HistoryPage'
 import { MachineMonitoringPage } from '../pages/MachineMonitoringPage'
 import { SettingsPage } from '../pages/SettingsPage'
 import { LoginPage } from '../pages/LoginPage'
+import { RegisterShopPage } from '../pages/RegisterShopPage'
+import { AdminDashboardPage } from '../pages/AdminDashboardPage'
+import { MasterSettingsPage } from '../pages/MasterSettingsPage'
+import { HomeRedirectPage } from '../pages/HomeRedirectPage'
 import { UserManagementPage } from '../pages/UserManagementPage'
 import { TrackOrderPage } from '../pages/TrackOrderPage'
+import type { ShopRole } from '../data/seeds'
+
+/**
+ * Wrap a shop page in the workspace guard + shared layout. The guard resolves
+ * the `:shopSlug`, verifies membership and shop status, and (optionally)
+ * restricts the route to specific shop roles. `Administrator` is always allowed.
+ */
+function shopPage(
+  title: string,
+  description: string,
+  node: ReactNode,
+  allowedRoles?: ShopRole[],
+): ReactNode {
+  return (
+    <ShopGuard allowedRoles={allowedRoles}>
+      <AppLayout title={title} description={description}>
+        {node}
+      </AppLayout>
+    </ShopGuard>
+  )
+}
 
 export const router = createBrowserRouter([
   {
     errorElement: <RouteError />,
     children: [
-  {
-    path: '/',
-    element: <Navigate to="/login" replace />,
-  },
-  {
-    path: '/login',
-    element: <LoginPage />,
-  },
-  {
-    // Public, sign-in-free order tracking reached by scanning a receipt QR.
-    path: '/track/:id',
-    element: <TrackOrderPage />,
-  },
-  {
-    path: '/dashboard',
-    element: (
-      <ProtectedRoute>
-        <AppLayout title="Dashboard" description="Overview of daily laundry operations and status">
-          <DashboardPage />
-        </AppLayout>
-      </ProtectedRoute>
-    ),
-  },
-  {
-    path: '/customers',
-    element: (
-      <ProtectedRoute>
-        <AppLayout title="Customers" description="Manage customer profiles and service history">
-          <CustomersPage />
-        </AppLayout>
-      </ProtectedRoute>
-    ),
-  },
-  {
-    path: '/job-orders',
-    element: (
-      <ProtectedRoute>
-        <AppLayout title="Job Orders" description="Review active and completed laundry jobs">
-          <JobOrdersPage />
-        </AppLayout>
-      </ProtectedRoute>
-    ),
-  },
-  {
-    path: '/production-board',
-    element: (
-      <ProtectedRoute>
-        <AppLayout title="Production Board" description="Coordinate workflow stages and station activity">
-          <ProductionBoardPage />
-        </AppLayout>
-      </ProtectedRoute>
-    ),
-  },
-  {
-    path: '/claim-laundry',
-    element: (
-      <ProtectedRoute>
-        <AppLayout title="Claim Laundry" description="Handle ready pickups and customer handoffs">
-          <ClaimLaundryPage />
-        </AppLayout>
-      </ProtectedRoute>
-    ),
-  },
-  {
-    path: '/payments',
-    element: (
-      <ProtectedRoute>
-        <AppLayout title="Payments" description="Track payments and outstanding balances">
-          <PaymentsPage />
-        </AppLayout>
-      </ProtectedRoute>
-    ),
-  },
-  {
-    path: '/expenses',
-    element: (
-      <ProtectedRoute>
-        <AppLayout title="Expenses" description="Monitor operational costs and spending categories">
-          <ExpensesPage />
-        </AppLayout>
-      </ProtectedRoute>
-    ),
-  },
-  {
-    path: '/sales-summary',
-    element: (
-      <ProtectedRoute>
-        <AppLayout title="Sales Summary" description="End-of-day sales and performance overview">
-          <SalesSummaryPage />
-        </AppLayout>
-      </ProtectedRoute>
-    ),
-  },
-  {
-    path: '/cash-drawer',
-    element: (
-      <ProtectedRoute>
-        <AppLayout title="Cash Drawer & Shift" description="Reconcile drawer activity and shift operations">
-          <CashDrawerPage />
-        </AppLayout>
-      </ProtectedRoute>
-    ),
-  },
-  {
-    path: '/history',
-    element: (
-      <ProtectedRoute>
-        <AppLayout title="History" description="Analyze operations, finance, service performance, and audit events">
-          <HistoryPage />
-        </AppLayout>
-      </ProtectedRoute>
-    ),
-   },
-   {
-    path: '/machine-monitoring',
-    element: (
-      <ProtectedRoute>
-        <AppLayout title="Machine Monitoring" description="Monitor equipment utilization and availability">
-          <MachineMonitoringPage />
-        </AppLayout>
-      </ProtectedRoute>
-    ),
-  },
-  {
-    path: '/user-management',
-    element: (
-      <ProtectedRoute requiredRole="Administrator">
-        <AppLayout title="User Management" description="Add, edit, disable, and reset staff accounts">
-          <UserManagementPage />
-        </AppLayout>
-      </ProtectedRoute>
-    ),
-  },
-  {
-    path: '/settings',
-    element: (
-      <ProtectedRoute>
-        <AppLayout title="Settings" description="Configure operational defaults and preferences">
-          <SettingsPage />
-        </AppLayout>
-      </ProtectedRoute>
-    ),
-  },
-  {
-    path: '*',
-    element: <Navigate to="/dashboard" replace />,
-  },
+      {
+        path: '/',
+        element: <HomeRedirectPage />,
+      },
+      {
+        path: '/login',
+        element: <LoginPage />,
+      },
+      {
+        path: '/register',
+        element: <RegisterShopPage />,
+      },
+      {
+        // Platform-wide master console (registry, approvals, suspensions).
+        path: '/admin',
+        element: (
+          <MasterRoute>
+            <AdminDashboardPage />
+          </MasterRoute>
+        ),
+      },
+      {
+        // Platform administrators: add / revoke other master accounts.
+        path: '/admin/settings',
+        element: (
+          <MasterRoute>
+            <MasterSettingsPage />
+          </MasterRoute>
+        ),
+      },
+      {
+        // Legacy public order tracking (receipts printed before multi-tenancy).
+        path: '/track/:id',
+        element: <TrackOrderPage />,
+      },
+      {
+        // Public order tracking reached by scanning a shop receipt QR.
+        path: '/track/:shopId/:key',
+        element: <TrackOrderPage />,
+      },
+      {
+        // Each shop gets its own isolated workspace under `/{slug}`.
+        path: '/:shopSlug',
+        children: [
+          { index: true, element: <Navigate to="dashboard" replace /> },
+          { path: 'dashboard', element: shopPage('Dashboard', 'Overview of daily laundry operations and status', <DashboardPage />) },
+          { path: 'customers', element: shopPage('Customers', 'Manage customer profiles and service history', <CustomersPage />) },
+          { path: 'job-orders', element: shopPage('Job Orders', 'Review active and completed laundry jobs', <JobOrdersPage />) },
+          { path: 'production-board', element: shopPage('Production Board', 'Coordinate workflow stages and station activity', <ProductionBoardPage />) },
+          { path: 'claim-laundry', element: shopPage('Claim Laundry', 'Handle ready pickups and customer handoffs', <ClaimLaundryPage />) },
+          { path: 'payments', element: shopPage('Payments', 'Track payments and outstanding balances', <PaymentsPage />) },
+          { path: 'expenses', element: shopPage('Expenses', 'Monitor operational costs and spending categories', <ExpensesPage />) },
+          { path: 'sales-summary', element: shopPage('Sales Summary', 'End-of-day sales and performance overview', <SalesSummaryPage />) },
+          { path: 'cash-drawer', element: shopPage('Cash Drawer & Shift', 'Reconcile drawer activity and shift operations', <CashDrawerPage />) },
+          { path: 'history', element: shopPage('History', 'Analyze operations, finance, service performance, and audit events', <HistoryPage />) },
+          { path: 'machine-monitoring', element: shopPage('Machine Monitoring', 'Monitor equipment utilization and availability', <MachineMonitoringPage />) },
+          {
+            path: 'user-management',
+            // Administrators only (no extra roles beyond the implicit owner).
+            element: shopPage('User Management', 'Add, edit, disable, and reset staff accounts', <UserManagementPage />, []),
+          },
+          {
+            path: 'settings',
+            element: shopPage('Settings', 'Configure operational defaults and preferences', <SettingsPage />, ['Manager']),
+          },
+        ],
+      },
+      {
+        path: '*',
+        element: <Navigate to="/" replace />,
+      },
     ],
   },
 ])

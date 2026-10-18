@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type ChangeEvent } from 'react'
+import { useEffect, useMemo, useRef, useState, type ChangeEvent } from 'react'
 import { useParams } from 'react-router-dom'
 import { doc, onSnapshot } from 'firebase/firestore'
 import { FaTshirt, FaWind, FaBoxOpen, FaCheckCircle, FaClock, FaHourglassHalf, FaBell, FaBellSlash, FaQrcode, FaUpload, FaCopy } from 'react-icons/fa'
@@ -6,11 +6,14 @@ import { db, isFirebaseConfigured } from '../lib/firebase'
 import { subscribeToPush } from '../lib/push'
 import { usePaymentSettings } from '../hooks/usePaymentSettings'
 import { resizeImageToJpeg, submitPaymentProof } from '../lib/paymentProof'
+import { namespacedKey } from '../lib/tenant'
+import { trackKey } from '../lib/tracking'
 
 /** Public, sign-in-free laundry status page reached by scanning a receipt QR. */
 
 interface TrackingDoc {
   id: string
+  shopId?: string
   status: string
   updatedAt?: number
   paymentStatus?: string
@@ -44,16 +47,32 @@ const notifySupported = typeof window !== 'undefined' && 'Notification' in windo
 type NotifyState = 'unsupported' | 'default' | 'granted' | 'denied'
 
 export function TrackOrderPage() {
-  const { id = '' } = useParams()
+  // Two public routes feed this page:
+  //   /track/:shopId/:key  → the multi-tenant receipt QR (preferred)
+  //   /track/:id           → legacy receipts printed before multi-tenancy
+  const { id: legacyId = '', shopId: routeShopId = '', key = '' } = useParams()
+  const rawJobId = key || legacyId
+  const docId = useMemo(
+    () => (routeShopId ? namespacedKey(routeShopId, trackKey(rawJobId)) : rawJobId),
+    [routeShopId, rawJobId],
+  )
+
   const [record, setRecord] = useState<TrackingDoc | null>(null)
   const [state, setState] = useState<'loading' | 'ready' | 'notfound' | 'offline'>('loading')
-  const { payment } = usePaymentSettings()
+  // Legacy receipt URLs don't carry the shop; the tracking doc does, so adopt it.
+  const [docShopId, setDocShopId] = useState('')
+  const shopId = routeShopId || docShopId
+  const { payment } = usePaymentSettings(shopId)
   const [showGcash, setShowGcash] = useState(false)
   const [proof, setProof] = useState<'idle' | 'uploading' | 'done' | 'error'>('idle')
   const [notify, setNotify] = useState<NotifyState>(notifySupported ? (Notification.permission as NotifyState) : 'unsupported')
   // Last status we've already shown, so we only notify on real changes (never on
   // the first load).
   const lastStatus = useRef<string | null>(null)
+
+  // Business job id used for stored proofs / push subscriptions. Prefer the id
+  // recorded on the tracking doc (e.g. a pretty "#1049"); fall back to the route.
+  const jobId = record?.id || rawJobId
 
   // Register the service worker once — needed for showNotification() on mobile.
   useEffect(() => {
@@ -68,7 +87,7 @@ export function TrackOrderPage() {
           body: stageMessage(status),
           icon: '/brand-logo.png',
           badge: '/brand-logo.png',
-          tag: `laundry-${id}`,
+          tag: `laundry-${docId}`,
           data: { url: window.location.href },
         }),
       )
@@ -81,7 +100,7 @@ export function TrackOrderPage() {
     setNotify(result as NotifyState)
     if (result === 'granted') {
       // Subscribe to background push so updates arrive even when the tab is closed.
-      await subscribeToPush(id, lastStatus.current ?? '')
+      await subscribeToPush(jobId, lastStatus.current ?? '', shopId)
     }
   }
 
@@ -92,7 +111,7 @@ export function TrackOrderPage() {
     setProof('uploading')
     try {
       const image = await resizeImageToJpeg(file)
-      const ok = await submitPaymentProof(record?.id ?? id, image)
+      const ok = await submitPaymentProof(jobId, image, shopId)
       setProof(ok ? 'done' : 'error')
     } catch {
       setProof('error')
@@ -107,7 +126,7 @@ export function TrackOrderPage() {
   // for background push once its status is known.
   useEffect(() => {
     if (notify === 'granted' && state === 'ready' && record) {
-      void subscribeToPush(id, record.status)
+      void subscribeToPush(jobId, record.status, shopId)
     }
     // Only needs to run when the order first resolves.
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -119,10 +138,13 @@ export function TrackOrderPage() {
       return
     }
     const unsubscribe = onSnapshot(
-      doc(db, 'tracking', id),
+      doc(db, 'tracking', docId),
       (snap) => {
         if (snap.exists()) {
           const data = snap.data() as TrackingDoc
+          // Legacy receipt URLs don't include the shop — adopt it from the doc so
+          // GCash settings / proof uploads target the right shop.
+          if (!routeShopId && data.shopId) setDocShopId(data.shopId)
           // Fire a notification only when the status actually changes (not on the
           // initial load and not on unrelated field updates).
           if (lastStatus.current !== null && lastStatus.current !== data.status) {
@@ -139,7 +161,7 @@ export function TrackOrderPage() {
     )
     return unsubscribe
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [id])
+  }, [docId])
 
   const status = record ? normalize(record.status) : ''
   const currentIndex = STAGES.findIndex((s) => s.key === status)
@@ -168,7 +190,7 @@ export function TrackOrderPage() {
 
         {state === 'notfound' ? (
           <div className="mt-6 rounded-2xl border border-slate-200 bg-slate-50 p-6 text-center text-sm text-slate-500">
-            We couldn't find an order for <span className="font-semibold text-slate-700">#{id}</span>. Double-check the code on your receipt, or ask the store.
+            We couldn't find an order for <span className="font-semibold text-slate-700">#{rawJobId}</span>. Double-check the code on your receipt, or ask the store.
           </div>
         ) : null}
 

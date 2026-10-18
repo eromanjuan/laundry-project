@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
-import { addDoc, collection, deleteDoc, doc, onSnapshot, updateDoc } from 'firebase/firestore'
+import { addDoc, collection, deleteDoc, doc, onSnapshot, query, updateDoc, where } from 'firebase/firestore'
 import { db, isFirebaseConfigured } from '../lib/firebase'
+import { useShopId } from '../context/ShopContext'
 
 /** Firestore's own document id, attached alongside the record's business `id`. */
 export interface WithDocId {
@@ -19,24 +20,34 @@ export interface CollectionApi<T> {
 }
 
 /**
- * Realtime binding to a Firestore collection with a local-state fallback.
+ * Tenant-scoped, realtime binding to a Firestore collection.
  *
- * When Firebase is configured, `data` streams live via `onSnapshot` and every
- * mutation is written to Firestore. When it is not configured, the same API
- * operates on in-memory seed data, so the UI behaves identically either way.
+ * When Firebase is configured every query is filtered to the active shop
+ * (`where('shopId','==', shopId)`) and every insert is stamped with that
+ * `shopId`. This is what makes the client query *provably* tenant-safe: the
+ * security rules reject any query that isn't constrained to the caller's shop.
+ * Outside a shop workspace (e.g. the master console) the hook stays empty.
  */
 export function useCollection<T extends { id: string }>(name: string, seed: T[]): CollectionApi<T> {
-  // When connected to Firestore, start EMPTY and wait for the live snapshot — do
-  // not flash the sample seed data. The seed is only a fallback for local dev
-  // (Firebase not configured).
+  const shopId = useShopId()
   const [data, setData] = useState<Array<T & WithDocId>>(() => (isFirebaseConfigured ? [] : (seed as Array<T & WithDocId>)))
   const [loading, setLoading] = useState<boolean>(isFirebaseConfigured)
 
   useEffect(() => {
-    if (!isFirebaseConfigured || !db) return
+    if (!isFirebaseConfigured || !db || !shopId) {
+      if (!isFirebaseConfigured) {
+        setData(seed as Array<T & WithDocId>)
+        setLoading(false)
+      } else {
+        setData([])
+        setLoading(false)
+      }
+      return
+    }
 
+    setLoading(true)
     const unsubscribe = onSnapshot(
-      collection(db, name),
+      query(collection(db, name), where('shopId', '==', shopId)),
       (snapshot) => {
         const rows = snapshot.docs.map((entry) => ({
           ...(entry.data() as T),
@@ -57,14 +68,16 @@ export function useCollection<T extends { id: string }>(name: string, seed: T[])
     )
 
     return unsubscribe
-  }, [name])
+    // `seed` is intentionally excluded — it is a static fallback reference.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [name, shopId])
 
   const add = async (item: T) => {
-    if (isFirebaseConfigured && db) {
-      await addDoc(collection(db, name), { ...item, createdAt: Date.now() })
+    if (isFirebaseConfigured && db && shopId) {
+      await addDoc(collection(db, name), { ...item, shopId, createdAt: Date.now() })
       return
     }
-    setData((previous) => [{ ...item } as T & WithDocId, ...previous])
+    setData((previous) => [{ ...item, shopId } as T & WithDocId, ...previous])
   }
 
   const update = async (row: T & WithDocId, changes: Partial<T>) => {
