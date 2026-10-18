@@ -50,6 +50,106 @@ function friendly(status) {
   return map[status] || `Status: ${status}`
 }
 
+/** Body for a cycle timer that has just run out. */
+function timerBody(stage) {
+  return stage === 'Washing'
+    ? 'Your wash is done — we are moving your laundry on.'
+    : 'Your laundry is dry — almost ready for pickup.'
+}
+
+/** `${shopId}_${jobKey}` tracking key, matching the client's trackKey(). */
+function jobKeyOf(jobId) {
+  return String(jobId ?? '').replace(/[^A-Za-z0-9-]/g, '')
+}
+
+/**
+ * Fire an alert for every wash/dry cycle whose timer has run out.
+ *
+ * This is the half of the timer feature that has to work with the shop closed:
+ * the POS app can only raise an alert while somebody has it open, so the sweep
+ * is what makes an expired cycle actually notify staff and the customer.
+ *
+ * It deliberately does NOT advance the order. A timer is a reminder set by a
+ * person, not proof that the physical cycle finished, so the order stays put
+ * and a staff member moves it on.
+ *
+ * Each fired timer is stamped with `*TimerNotifiedAt`, so a cycle alerts once
+ * however often this runs. Runs on the schedule in .github/workflows, so a
+ * notification lands within one cron interval of the timer expiring.
+ */
+async function sweepTimers(db, subsByJobKey) {
+  const now = Date.now()
+  // Only cycles that are actually running can expire. A single-field `in`
+  // query, so no composite index is needed.
+  const snap = await db.collection('orders').where('status', 'in', ['Washing', 'Drying']).get()
+
+  let fired = 0
+  for (const orderDoc of snap.docs) {
+    const order = orderDoc.data()
+    const stage = order.status === 'Washing' ? 'Washing' : 'Drying'
+    const prefix = stage === 'Washing' ? 'wash' : 'dry'
+    const endsAt = Number(order[`${prefix}TimerEndsAt`])
+    const notifiedAt = Number(order[`${prefix}TimerNotifiedAt`])
+    if (!Number.isFinite(endsAt) || endsAt <= 0) continue
+    if (endsAt > now) continue
+    if (Number.isFinite(notifiedAt) && notifiedAt > 0) continue
+
+    const shopId = order.shopId || ''
+    const jobId = order.id || ''
+    const jobKey = jobKeyOf(jobId)
+    const minutes = Number(order[`${prefix}TimerMinutes`]) || 0
+    const lateMins = Math.max(0, Math.round((now - endsAt) / 60000))
+
+    // 1. Staff alert — one shared document per shop, so every member sees it.
+    // The id is deterministic, so a retried run cannot duplicate the alert.
+    if (shopId && jobId) {
+      const alertId = `${shopId}_${jobKey}_${prefix}_${endsAt}`
+      await db.collection('staffAlerts').doc(alertId).set(
+        {
+          id: alertId,
+          shopId,
+          kind: 'timer-done',
+          title: `${jobId} — ${stage} time is up`,
+          body: `${order.customer || 'Customer'} • ${stage.toLowerCase()} timer of ${minutes} min finished${lateMins > 1 ? ` (${lateMins} min ago)` : ''}. Move it on when ready.`,
+          orderId: jobId,
+          customer: order.customer || '',
+          stage,
+          acknowledgedBy: [],
+          createdAt: now,
+        },
+        { merge: true },
+      )
+    }
+
+    // 2. Customer push, to every device watching this order.
+    for (const sub of subsByJobKey.get(`${shopId}_${jobKey}`) || []) {
+      if (!sub.endpoint || !sub.keys) continue
+      const url = shopId ? `${SITE_URL}/track/${shopId}/${jobKey}` : `${SITE_URL}/track/${jobKey}`
+      try {
+        await webpush.sendNotification(
+          { endpoint: sub.endpoint, keys: sub.keys },
+          JSON.stringify({ id: `${shopId}_${jobKey}`, status: order.status, body: timerBody(stage), url }),
+        )
+      } catch (e) {
+        const code = e.statusCode
+        if (code === 404 || code === 410 || code === 401 || code === 403) {
+          await sub.ref.delete().catch(() => {})
+          console.warn(`removed dead subscription for ${sub.jobKey} (${code})`)
+        } else {
+          console.warn(`timer push failed for ${sub.jobKey} (${code || '?'}):`, e.body || e.message)
+        }
+      }
+    }
+
+    // 3. Mark it alerted so this only ever fires once per cycle.
+    await orderDoc.ref.update({ [`${prefix}TimerNotifiedAt`]: now })
+    fired += 1
+  }
+
+  if (fired > 0) console.log(`Cycle timers: ${fired} finished cycle(s) alerted.`)
+  return fired
+}
+
 async function run() {
   const publicKey = process.env.VAPID_PUBLIC_KEY
   const privateKey = process.env.VAPID_PRIVATE_KEY
@@ -59,8 +159,23 @@ async function run() {
 
   const db = initAdmin()
   const subs = await db.collection('pushSubs').get()
+
+  // Index subscriptions by tracking key so the timer sweep can reach the right
+  // customers without a second query.
+  const subsByJobKey = new Map()
+  for (const docSnap of subs.docs) {
+    const sub = docSnap.data()
+    if (!sub.jobKey) continue
+    const list = subsByJobKey.get(sub.jobKey) || []
+    list.push({ ...sub, ref: docSnap.ref })
+    subsByJobKey.set(sub.jobKey, list)
+  }
+
+  // Always sweep timers, even with no subscribers — the staff alert matters.
+  await sweepTimers(db, subsByJobKey)
+
   if (subs.empty) {
-    console.log('No push subscriptions — nothing to do.')
+    console.log('No push subscriptions — status pushes skipped.')
     return
   }
 

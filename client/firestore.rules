@@ -243,6 +243,25 @@ service cloud.firestore {
       allow delete: if canWriteTenant(resource.data.shopId);
     }
 
+    // Staff notifications ("the wash on #1031 is done", "#1031 moved to
+    // Drying"). One shared document per event, read by every active member of
+    // the shop; read state lives in `acknowledgedBy` (a list of uids) so the
+    // bell's unread count is personal without fanning the alert out per user.
+    // The push-sync GitHub Action also writes here through the Admin SDK, which
+    // bypasses these rules, so an expired cycle still alerts a closed shop.
+    match /staffAlerts/{id} {
+      allow read: if canReadTenant(resource.data.shopId);
+      allow create: if isMaster() || canWriteTenant(request.resource.data.shopId);
+      // Acknowledging only ever appends the caller's own uid to the list.
+      allow update: if isMaster() || (canReadTenant(resource.data.shopId)
+        && request.resource.data.shopId == resource.data.shopId
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['acknowledgedBy'])
+        && request.auth != null
+        && request.auth.uid in request.resource.data.acknowledgedBy);
+      allow delete: if isMaster() || (isActiveMember(resource.data.shopId)
+        && get(userPath(request.auth.uid)).data.role in ['Administrator', 'Manager']);
+    }
+
     match /activity/{id} {
       allow read: if canReadTenant(resource.data.shopId);
       allow create: if canWriteTenant(request.resource.data.shopId);

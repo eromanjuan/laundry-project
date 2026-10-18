@@ -6,6 +6,8 @@ import { usePermissions } from '../hooks/usePermissions'
 import { useBranding, fileToResizedDataUrl } from '../hooks/useBranding'
 import { useBusiness } from '../hooks/useBusiness'
 import { usePaymentSettings } from '../hooks/usePaymentSettings'
+import { useTimerSettings } from '../hooks/useTimerSettings'
+import { clampMinutes, MAX_TIMER_MINUTES } from '../lib/timers'
 import { useLgConnection } from '../hooks/useLgConnection'
 import { useLgStatus, syncLgNow } from '../hooks/useLgStatus'
 import { backupDatabase, restoreDatabase } from '../lib/backup'
@@ -174,6 +176,14 @@ export function SettingsPage() {
   const { logoUrl, saveLogo, resetLogo } = useBranding()
   const { business, save: saveBusiness } = useBusiness()
   const { payment: gcashSettings, save: saveGcash } = usePaymentSettings()
+  const { timers: timerSettings, save: saveTimers } = useTimerSettings()
+  const [timerForm, setTimerForm] = useState({ washMinutes: timerSettings.washMinutes, dryMinutes: timerSettings.dryMinutes })
+  const [timersSaved, setTimersSaved] = useState(false)
+  useEffect(() => setTimerForm({ washMinutes: timerSettings.washMinutes, dryMinutes: timerSettings.dryMinutes }), [timerSettings.washMinutes, timerSettings.dryMinutes])
+  const handleSaveTimers = () => {
+    void saveTimers(timerForm)
+    setTimersSaved(true)
+  }
   const [gcashForm, setGcashForm] = useState({ gcashName: '', gcashNumber: '', gcashQr: '' })
   const [gcashSaved, setGcashSaved] = useState(false)
   const { connection: lg, save: saveLg } = useLgConnection()
@@ -504,6 +514,48 @@ export function SettingsPage() {
                   </p>
                 )}
               </div>
+            </SectionCard>
+
+            <SectionCard title="Wash & Dry Timers" subtitle="Default cycle length. Staff can still set a custom time on any single order.">
+              <div className="grid gap-4 md:grid-cols-2">
+                <label className="block space-y-1">
+                  <span className="text-sm font-semibold text-slate-700">Default wash time (minutes)</span>
+                  <input
+                    type="number"
+                    min={1}
+                    max={MAX_TIMER_MINUTES}
+                    value={timerForm.washMinutes}
+                    onChange={(e) => setTimerForm((f) => ({ ...f, washMinutes: clampMinutes(e.target.value, f.washMinutes) }))}
+                    className="w-full rounded-2xl border border-slate-200 px-3 py-2.5 outline-none focus:border-blue-400"
+                  />
+                </label>
+                <label className="block space-y-1">
+                  <span className="text-sm font-semibold text-slate-700">Default dry time (minutes)</span>
+                  <input
+                    type="number"
+                    min={1}
+                    max={MAX_TIMER_MINUTES}
+                    value={timerForm.dryMinutes}
+                    onChange={(e) => setTimerForm((f) => ({ ...f, dryMinutes: clampMinutes(e.target.value, f.dryMinutes) }))}
+                    className="w-full rounded-2xl border border-slate-200 px-3 py-2.5 outline-none focus:border-blue-400"
+                  />
+                </label>
+              </div>
+              <div className="mt-4 flex flex-wrap items-center gap-2">
+                <button
+                  onClick={handleSaveTimers}
+                  disabled={!canManagePricing}
+                  className="flex items-center gap-2 rounded-2xl bg-emerald-600 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  <FaSave /> {timersSaved ? 'Saved!' : 'Save Timers'}
+                </button>
+              </div>
+              <p className="mt-3 text-xs leading-relaxed text-slate-500">
+                When a cycle finishes counting, staff and the customer are notified. The order
+                <span className="font-semibold"> will not move on by itself</span> — someone still moves it to the next stage,
+                so a wrong timer can never skip a real wash. Changing a default only affects cycles started from now on;
+                ones already running keep the time they were given.
+              </p>
             </SectionCard>
 
             <SectionCard title="GCash Payment" subtitle="Your GCash QR & number — shown to customers when they pay by GCash.">

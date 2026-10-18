@@ -1,7 +1,8 @@
 import type { ReactNode } from 'react'
-import { FaBars, FaBell, FaCalendarAlt, FaSearch } from 'react-icons/fa'
+import { FaBars, FaCalendarAlt, FaSearch } from 'react-icons/fa'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
+import { StaffAlertsBell } from './StaffAlertsBell'
 
 interface TopbarProps {
   title: string
@@ -57,9 +58,7 @@ export function Topbar({ title, description, action, onMenuClick }: TopbarProps)
               aria-label="Search"
             />
           </label>
-          <button className="rounded-xl border border-slate-200 p-2.5 text-slate-600 transition hover:bg-slate-100">
-            <FaBell />
-          </button>
+          <StaffAlertsBell />
           <div className="flex items-center gap-2 rounded-xl border border-blue-100 bg-blue-50 px-3 py-2">
             <div className="flex h-8 w-8 items-center justify-center overflow-hidden rounded-full bg-blue-600 text-xs font-semibold text-white">
               {user?.photo ? <img src={user.photo} alt={user.name} className="h-full w-full object-cover" /> : (user?.name?.charAt(0) ?? '?')}

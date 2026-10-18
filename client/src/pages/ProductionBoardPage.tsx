@@ -3,6 +3,10 @@ import { FaSearch, FaHistory, FaTimes, FaCopy, FaExternalLinkAlt, FaChevronDown,
 import { ProductionCard, CARD_FIELDS } from '../components/ProductionCard'
 import { ProductionColumn } from '../components/ProductionColumn'
 import { SingleStageView } from '../components/SingleStageView'
+import { useNow } from '../components/TimerBadge'
+import { useTimerSettings } from '../hooks/useTimerSettings'
+import { useStaffAlerts } from '../hooks/useStaffAlerts'
+import { clearedTimerFields, timerFields } from '../lib/timers'
 import { OrderDetailsModal, type WasherOption } from '../components/OrderDetailsModal'
 import { ActivityLogModal } from '../components/ActivityLogModal'
 import { RevertStageModal } from '../components/RevertStageModal'
@@ -72,6 +76,10 @@ export function ProductionBoardPage() {
   const { business } = useBusiness()
   const { pricing } = usePricing()
   const { payment } = usePaymentSettings()
+  const { timers } = useTimerSettings()
+  const { notify } = useStaffAlerts()
+  // One shared clock for every countdown on the board.
+  const now = useNow()
   const [showLog, setShowLog] = useState(false)
   const [query, setQuery] = useState('')
 
@@ -237,20 +245,33 @@ export function ProductionBoardPage() {
     const nextPending = oldestPending(jobs, excludeJobId)
     if (nextPending) {
       void updateMachine(washer, { status: 'Busy', orderId: nextPending.id, cycles: (washer.cycles || 0) + 1 })
-      void update(nextPending, { status: 'Washing', assigned: washer.name, startedAt: nowStamp() })
+      // This pulls a real order into a real wash, so it gets a countdown too.
+      void update(nextPending, {
+        status: 'Washing',
+        assigned: washer.name,
+        startedAt: nowStamp(),
+        ...clearedTimerFields('Drying'),
+        ...timerFields('Washing', timers.washMinutes),
+      })
       void publishStatus(nextPending.id, 'Washing')
+      announceMove(nextPending, 'Pending', 'Washing', 'auto-started')
     } else {
       void updateMachine(washer, { status: 'Available', orderId: '' })
     }
   }
 
-  const moveOrder = (job: OrderRecord & WithDocId, target: string, preferredWasher?: string): string | null => {
+  const moveOrder = (job: OrderRecord & WithDocId, target: string, preferredWasher?: string, preferredMinutes?: number): string | null => {
     if (job.status === target) return null
     const ownMachine = machines.find((entry) => entry.orderId === job.id)
+    // Starting a cycle: the staff member's custom length wins, else the shop's
+    // configured default. Leaving a cycle always clears that cycle's countdown.
+    const washPatch = { ...clearedTimerFields('Drying'), ...timerFields('Washing', preferredMinutes ?? timers.washMinutes) }
+    const dryPatch = { ...clearedTimerFields('Washing'), ...timerFields('Drying', preferredMinutes ?? timers.dryMinutes) }
+    const clearBoth = { ...clearedTimerFields('Washing'), ...clearedTimerFields('Drying') }
 
     if (target === 'Pending') {
       if (ownMachine) void updateMachine(ownMachine, { status: 'Available', orderId: '' })
-      void update(job, { status: 'Pending', assigned: 'Unassigned', startedAt: '', releasedAt: '' })
+      void update(job, { status: 'Pending', assigned: 'Unassigned', startedAt: '', releasedAt: '', ...clearBoth })
       return null
     }
 
@@ -269,7 +290,7 @@ export function ProductionBoardPage() {
       if (ownMachine && ownMachine.type === 'Dryer') void updateMachine(ownMachine, { status: 'Available', orderId: '' })
       // Occupy the washer if it isn't already this job's machine.
       if (washer !== ownMachine) void updateMachine(washer, { status: 'Busy', orderId: job.id, cycles: (washer.cycles || 0) + 1 })
-      void update(job, { status: 'Washing', assigned: washer.name, startedAt: job.startedAt || nowStamp(), releasedAt: '' })
+      void update(job, { status: 'Washing', assigned: washer.name, startedAt: job.startedAt || nowStamp(), releasedAt: '', ...washPatch })
       return null
     }
 
@@ -284,7 +305,7 @@ export function ProductionBoardPage() {
       if (ownMachine && ownMachine.type === 'Washer') releaseWasher(ownMachine, job.id)
       // Occupy the dryer if it isn't already this job's machine.
       if (dryer !== ownMachine) void updateMachine(dryer, { status: 'Busy', orderId: job.id, cycles: (dryer.cycles || 0) + 1 })
-      void update(job, { status: 'Drying', assigned: dryer.name, releasedAt: '' })
+      void update(job, { status: 'Drying', assigned: dryer.name, releasedAt: '', ...dryPatch })
       return null
     }
 
@@ -295,7 +316,7 @@ export function ProductionBoardPage() {
         if (ownMachine.type === 'Washer') releaseWasher(ownMachine, job.id)
         else void updateMachine(ownMachine, { status: 'Available', orderId: '' })
       }
-      void update(job, { status: 'Ready', releasedAt: '' })
+      void update(job, { status: 'Ready', releasedAt: '', ...clearBoth })
       return null
     }
 
@@ -306,7 +327,7 @@ export function ProductionBoardPage() {
         if (ownMachine.type === 'Washer') releaseWasher(ownMachine, job.id)
         else void updateMachine(ownMachine, { status: 'Available', orderId: '' })
       }
-      void update(job, { status: 'Claimed', releasedAt: nowStamp() })
+      void update(job, { status: 'Claimed', releasedAt: nowStamp(), ...clearBoth })
       return null
     }
 
@@ -319,7 +340,19 @@ export function ProductionBoardPage() {
     statuses.indexOf(job.status) >= 0 &&
     statuses.indexOf(target) < statuses.indexOf(job.status)
 
-  const attemptMove = (job: OrderRecord & WithDocId, target: string, closeModal = false, preferredWasher?: string) => {
+  /** Tell every staff member in the shop that an order moved. */
+  const announceMove = (job: OrderRecord & WithDocId, from: string, to: string, by?: string) => {
+    void notify({
+      kind: 'order-change',
+      title: `${job.id} — ${from} → ${to}`,
+      body: `${job.customer}${job.service ? ` • ${job.service}` : ''}${by ? ` • by ${by}` : ''}`,
+      orderId: job.id,
+      customer: job.customer,
+      stage: to,
+    })
+  }
+
+  const attemptMove = (job: OrderRecord & WithDocId, target: string, closeModal = false, preferredWasher?: string, preferredMinutes?: number) => {
     // Moving an order back a stage is easy to do by accident (a stray drag), so
     // require a reason + password before it goes through.
     if (isBackwardMove(job, target)) {
@@ -327,12 +360,13 @@ export function ProductionBoardPage() {
       return
     }
     const from = job.status
-    const error = moveOrder(job, target, preferredWasher)
+    const error = moveOrder(job, target, preferredWasher, preferredMinutes)
     if (error) {
       setFeedback({ tone: 'error', text: error })
     } else {
       logActivity(`${job.id}: ${from} → ${target}`)
       void publishStatus(job.id, target)
+      announceMove(job, from, target, user?.name)
       setFeedback(null)
       if (closeModal) setSelectedJob(null)
     }
@@ -349,6 +383,7 @@ export function ProductionBoardPage() {
     if (error) return error
     logActivity(`${job.id}: reverted ${from} → ${target} — reason: ${reason}`)
     void publishStatus(job.id, target)
+    announceMove(job, from, target, user?.name)
     setFeedback({ tone: 'success', text: `${job.id} moved back to ${target}. The reason has been logged.` })
     setPendingRevert(null)
     if (closeModal) setSelectedJob(null)
@@ -689,7 +724,7 @@ export function ProductionBoardPage() {
                     onClick={() => setSelectedJob(job)}
                     className="cursor-grab active:cursor-grabbing"
                   >
-                    <ProductionCard job={job} onShowCode={() => showCode(job)} fields={visibleFields} />
+                    <ProductionCard job={job} onShowCode={() => showCode(job)} fields={visibleFields} now={now} />
                   </div>
                 ))}
               </ProductionColumn>
@@ -701,6 +736,7 @@ export function ProductionBoardPage() {
           stage={stageFilter}
           jobs={groupedJobs[stageFilter] ?? []}
           fields={visibleFields}
+          now={now}
           onOpen={setSelectedJob}
           onShowCode={showCode}
         />
@@ -713,8 +749,8 @@ export function ProductionBoardPage() {
         washerOptions={washerOptions}
         dryerOptions={dryerOptions}
         onClose={() => setSelectedJob(null)}
-        onStart={(job, washer) => attemptMove(job, 'Washing', true, washer)}
-        onDry={(job) => attemptMove(job, 'Drying', true)}
+        onStart={(job, washer, minutes) => attemptMove(job, 'Washing', true, washer, minutes)}
+        onDry={(job, minutes) => attemptMove(job, 'Drying', true, undefined, minutes)}
         onReady={(job) => attemptMove(job, 'Ready', true)}
         onClaim={(job) => attemptMove(job, 'Claimed', true)}
         onPay={handlePay}

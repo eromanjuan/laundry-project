@@ -3,6 +3,10 @@ import { FaTimes, FaTshirt, FaCheckCircle, FaBoxOpen, FaPlay, FaMoneyBillWave, F
 import type { OrderRecord } from '../data/seeds'
 import type { WithDocId } from '../hooks/useCollection'
 import { receivedStamp } from '../lib/dates'
+import { activeTimer } from '../lib/timers'
+import { useTimerSettings } from '../hooks/useTimerSettings'
+import { TimerBadge, useNow } from './TimerBadge'
+import { TimerLengthField } from './TimerLengthField'
 import { ImageViewerModal } from './ImageViewerModal'
 
 export interface WasherOption {
@@ -23,9 +27,9 @@ interface OrderDetailsModalProps {
   dryerOptions: WasherOption[]
   onClose: () => void
   /** Start washing. Optionally pass a chosen washer name to start on. */
-  onStart: (order: OrderRecord & WithDocId, washerName?: string) => void
+  onStart: (order: OrderRecord & WithDocId, washerName?: string, minutes?: number) => void
   /** Move a washing order into the drying stage. */
-  onDry: (order: OrderRecord & WithDocId) => void
+  onDry: (order: OrderRecord & WithDocId, minutes?: number) => void
   onReady: (order: OrderRecord & WithDocId) => void
   onClaim: (order: OrderRecord & WithDocId) => void
   onPay: (order: OrderRecord & WithDocId) => void
@@ -60,8 +64,16 @@ export function OrderDetailsModal({ order, machineAvailable, dryerAvailable, was
   const [declineMsg, setDeclineMsg] = useState('')
   // Full-screen proof image viewer.
   const [viewerSrc, setViewerSrc] = useState<string | null>(null)
+  // Shop-wide cycle defaults; each can be overridden for this order below.
+  const { timers: timerDefaults } = useTimerSettings()
+  const [washMinutes, setWashMinutes] = useState(timerDefaults.washMinutes)
+  const [dryMinutes, setDryMinutes] = useState(timerDefaults.dryMinutes)
+  const now = useNow()
   // Reset the staged pick whenever a different order opens in the modal.
   useEffect(() => { setPendingMachine(order?.assigned ?? '') }, [order?.id, order?.assigned])
+  // Start each order from the shop defaults; follow later changes to them.
+  useEffect(() => { setWashMinutes(timerDefaults.washMinutes) }, [order?.id, timerDefaults.washMinutes])
+  useEffect(() => { setDryMinutes(timerDefaults.dryMinutes) }, [order?.id, timerDefaults.dryMinutes])
 
   if (!order) return null
 
@@ -76,6 +88,8 @@ export function OrderDetailsModal({ order, machineAvailable, dryerAvailable, was
   const canReassign = isPending || order.status === 'Washing' || inDrying
   // Drying picks from dryers; every other reassignable stage picks from washers.
   const machineNoun = inDrying ? 'dryer' : 'washer'
+  // The countdown currently running on this order, if any.
+  const runningTimer = activeTimer(order)
   const activeOptions = inDrying ? dryerOptions : washerOptions
   // Free machines other than the one already assigned to this job.
   const otherFree = activeOptions.filter((w) => w.name !== order.assigned)
@@ -105,6 +119,12 @@ export function OrderDetailsModal({ order, machineAvailable, dryerAvailable, was
           {!isPaid ? <Row label="Paid" value={amountPaid} /> : null}
           {!isPaid ? <Row label="Balance" value={balanceDue} /> : null}
           <Row label="Received" value={receivedStamp(order)} />
+          {runningTimer ? (
+            <div className="flex items-center justify-between gap-2 rounded-xl bg-slate-50 px-3 py-2">
+              <span className="text-sm text-slate-500">Cycle timer</span>
+              <TimerBadge timer={runningTimer} now={now} />
+            </div>
+          ) : null}
           {order.startedAt ? <Row label="Started" value={order.startedAt} /> : null}
           {order.releasedAt ? <Row label="Released" value={order.releasedAt} /> : null}
         </div>
@@ -205,8 +225,14 @@ export function OrderDetailsModal({ order, machineAvailable, dryerAvailable, was
         <div className="mt-4 space-y-3">
           {order.status === 'Pending' ? (
             <>
+              <TimerLengthField
+                stage="Washing"
+                value={washMinutes}
+                onChange={setWashMinutes}
+                defaultMinutes={timerDefaults.washMinutes}
+              />
               <button
-                onClick={() => onStart(order, pendingMachine === order.assigned ? undefined : pendingMachine)}
+                onClick={() => onStart(order, pendingMachine === order.assigned ? undefined : pendingMachine, washMinutes)}
                 disabled={!machineAvailable}
                 className="flex w-full items-center justify-center gap-2 rounded-2xl bg-blue-600 px-4 py-3 text-sm font-semibold text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
               >
@@ -222,8 +248,14 @@ export function OrderDetailsModal({ order, machineAvailable, dryerAvailable, was
 
           {order.status === 'Washing' ? (
             <>
+              <TimerLengthField
+                stage="Drying"
+                value={dryMinutes}
+                onChange={setDryMinutes}
+                defaultMinutes={timerDefaults.dryMinutes}
+              />
               <button
-                onClick={() => onDry(order)}
+                onClick={() => onDry(order, dryMinutes)}
                 disabled={!dryerAvailable}
                 className="flex w-full items-center justify-center gap-2 rounded-2xl bg-orange-500 px-4 py-3 text-sm font-semibold text-white transition hover:bg-orange-600 disabled:cursor-not-allowed disabled:opacity-50"
               >

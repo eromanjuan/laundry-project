@@ -1,5 +1,7 @@
 import { FaQrcode } from 'react-icons/fa'
 import { receivedStamp } from '../lib/dates'
+import { activeTimer } from '../lib/timers'
+import { TimerBadge } from './TimerBadge'
 
 interface ProductionCardProps {
   job: {
@@ -49,11 +51,14 @@ const statusColors: Record<string, string> = {
   Ready: 'bg-emerald-100 text-emerald-700',
 }
 
-export function ProductionCard({ job, onShowCode, fields }: ProductionCardProps) {
+export function ProductionCard({ job, onShowCode, fields, now }: ProductionCardProps & { now: number }) {
   const show = (key: string) => !fields || fields.includes(key)
   const showServiceRow = show('service') || show('weight')
   const showDetailRows = show('loads') || show('items') || show('assigned') || showServiceRow
   const showBadges = show('priority') || show('payment') || show('status')
+  // A live countdown is operational, not decorative, so it is not one of the
+  // toggleable card fields — it always shows while a cycle is running.
+  const timer = activeTimer(job)
 
   return (
     <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm shadow-slate-200/70 transition hover:-translate-y-1 hover:shadow-lg">
@@ -107,6 +112,12 @@ export function ProductionCard({ job, onShowCode, fields }: ProductionCardProps)
           <p>Received: {receivedStamp(job)}</p>
           {job.startedAt ? <p>Started: {job.startedAt}</p> : null}
           {job.releasedAt ? <p>Released: {job.releasedAt}</p> : null}
+        </div>
+      ) : null}
+
+      {timer ? (
+        <div className="mt-4">
+          <TimerBadge timer={timer} now={now} />
         </div>
       ) : null}
 
